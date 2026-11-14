@@ -6,6 +6,8 @@ Una pulsera con ESP32 mide pulso, oxigenación, movimiento y el aire de la cabin
 
 Brief, requerimientos y decisiones: [documento del proyecto](https://claude.ai/artifact/NywqoijMa9Gyf5xubNdsjZ).
 
+**Antes de cambiar algo, lee [`CLAUDE.md`](CLAUDE.md):** resume las decisiones del equipo y las reglas para subir cambios. Los asistentes de IA lo leen automáticamente.
+
 ## Estructura
 
 ```
@@ -57,21 +59,21 @@ El cuerpo 3D de partículas viene de [mission-view](https://github.com/antonyto0
 
 En el preflight se elige la fuente: **Live wristband** (la pulsera real) o **Simulation** (el nodo simulado `sim-01` del servidor). Durante la misión, el enlace `Simulator` del pie (o la tecla `S`) muestra la barra de escenarios; las teclas `1` a `8` los lanzan y `← Live wristband` regresa a la pulsera.
 
-**Modo demo sin servidor.** Si la app no encuentra el servidor (o se abre con `?demo`), corre sola: el simulador y el motor de reglas de `packages/shared` se ejecutan en el navegador, así que las alertas son las mismas. Sirve para publicar solo `apps/web` (por ejemplo en Vercel, con `VITE_STANDALONE=1`) y enseñarla sin laptop-Nave. Opciones: `?delay=15` (retraso de Tierra en segundos) y `?scale=1` (velocidad de las reglas; por defecto 0.1).
+**Modo demo sin servidor.** Si la app no encuentra el servidor (o se abre con `?demo`), corre sola: el simulador y el motor de reglas de `packages/shared` se ejecutan en el navegador, así que las alertas son las mismas. Sirve para publicar solo `apps/web` (por ejemplo en Vercel, con `VITE_STANDALONE=1`) y enseñarla sin servidor. Opciones: `?delay=15` (retraso de Tierra en segundos) y `?scale=1` (velocidad de las reglas; por defecto 0.1).
 
 Otros parámetros: `?api=http://192.168.137.1:3000` apunta la app a otra Nave (también se puede escribir en el preflight). El nombre del producto está en `apps/web/src/config.ts`, y los textos cortos de cada alerta en `apps/web/src/model/copy.ts`: si backend agrega una regla, ahí se le pone su zona del cuerpo y su frase.
 
-## Modo Nave completo (demo)
+## Despliegue (demo)
+
+Para la entrega, un solo servidor desplegado en la nube hace de Nave y de Tierra (plataforma por confirmar). Se construye desde `apps/server/Dockerfile`, con PostgreSQL como servicio de la plataforma. El ESP32 envía por HTTPS a la URL de ese servidor (ver `firmware/include/config.example.h`).
+
+Para la demo conviene acelerar las reglas con `RULE_TIME_SCALE=0.1` y dejar `GROUND_DELAY_SEC=60`. `CORS_ORIGIN` debe incluir el dominio donde se publique la app.
+
+Para probar todo junto en local:
 
 ```bash
-docker compose up -d --build
+RULE_TIME_SCALE=0.1 docker compose up -d --build
 npm run dev:web
-```
-
-El ESP32 debe apuntar a la IP de esa laptop en la red local (`http://<IP>:3000`). Para la demo conviene acelerar las reglas:
-
-```bash
-RULE_TIME_SCALE=0.1 GROUND_DELAY_SEC=60 docker compose up -d --build
 ```
 
 ## Variables de entorno del servidor
@@ -140,5 +142,8 @@ Hoy envía valores fijos desde `readSensors()`; ahí se integran los sensores re
 
 ## Flujo de trabajo
 
-- `main` siempre funciona. Cada quien trabaja en su rama (`back/...`, `device/...`, `web/...`) y abre un PR.
+Las reglas completas están en [`CLAUDE.md`](CLAUDE.md#reglas-para-subir-cambios). En resumen:
+
+- `main` siempre funciona. Cada quien trabaja en su rama (`back/...`, `device/...`, `web/...`) y abre un PR que revisa otra persona.
 - Un cambio al contrato en `packages/shared` se acuerda entre backend y conexión del dispositivo antes de subirlo.
+- Antes del PR: `npm run typecheck` sin errores y decir qué se probó.
