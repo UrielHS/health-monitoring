@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+
+# PlatformIO
+firmware/.pio/
+firmware/.vscode/
+firmware/include/config.h

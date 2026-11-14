@@ -1,0 +1,40 @@
+# Instancia "Nave": todo corre local, sin internet.
+#   docker compose up -d --build
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: astro
+      POSTGRES_PASSWORD: astro
+      POSTGRES_DB: astro
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U astro"]
+      interval: 3s
+      retries: 20
+
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://astro:astro@db:5432/astro
+      DEVICE_API_KEYS: ${DEVICE_API_KEYS:-dev-key}
+      GROUND_DELAY_SEC: ${GROUND_DELAY_SEC:-60}
+      OFFLINE_AFTER_SEC: ${OFFLINE_AFTER_SEC:-10}
+      RULE_TIME_SCALE: ${RULE_TIME_SCALE:-1}
+      BASELINE_SAMPLES: ${BASELINE_SAMPLES:-30}
+    ports:
+      # 0.0.0.0 para que el ESP32 llegue por la red local
+      - "3000:3000"
+
+volumes:
+  pgdata:

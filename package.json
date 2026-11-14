@@ -1,0 +1,20 @@
+{
+  "name": "health-monitoring",
+  "private": true,
+  "description": "Monitoreo de salud de astronautas — NASA Space Apps 2026",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev -w @astro/server",
+    "dev:web": "npm run dev -w @astro/web",
+    "sim": "npm run sim -w @astro/server --",
+    "db:push": "npm run db:push -w @astro/server",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build:web": "npm run build -w @astro/web"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

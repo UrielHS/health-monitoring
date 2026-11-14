@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Reading {
+  id          Int      @id @default(autoincrement())
+  deviceId    String
+  bootId      Int
+  seq         Int
+  ts          DateTime
+  receivedAt  DateTime @default(now())
+  source      String
+  bpm         Float?
+  spo2        Float?
+  ppgQuality  String
+  accMag      Float
+  gyroMag     Float
+  activity    String
+  impact      Boolean
+  tempC       Float?
+  rh          Float?
+  pressureKpa Float?
+  coPpm       Float?
+  coState     String
+  localAlert  String
+
+  // Un reenvío desde la cola en flash no duplica datos.
+  @@unique([deviceId, bootId, seq])
+  @@index([deviceId, ts])
+}
+
+model Alert {
+  id        Int       @id @default(autoincrement())
+  deviceId  String
+  ruleId    String
+  level     String
+  title     String
+  message   String
+  action    String
+  values    Json
+  startedAt DateTime
+  endedAt   DateTime?
+  ackAt     DateTime?
+
+  @@index([deviceId, startedAt])
+}
+
+model Symptom {
+  id              Int      @id @default(autoincrement())
+  deviceId        String
+  type            String
+  intensity       Int
+  note            String?
+  shareWithGround Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  @@index([deviceId, createdAt])
+}
