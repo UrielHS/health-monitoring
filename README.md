@@ -9,9 +9,9 @@ Brief, requerimientos y decisiones: [documento del proyecto](https://claude.ai/a
 ## Estructura
 
 ```
-packages/shared   Contrato de telemetría (Zod) y tipos compartidos. Fuente única de verdad del JSON.
-apps/server       Express + Socket.IO + Prisma/PostgreSQL. Reglas de alerta, vista Tierra con retraso, simulador.
-apps/web          PWA (React + Vite). Vista del astronauta (#ship) y del médico en Tierra (#ground).
+packages/shared   Contrato de telemetría (Zod), motor de reglas y simulador. Fuente única de verdad del JSON y de las alertas.
+apps/server       Express + Socket.IO + Prisma/PostgreSQL. Aplica las reglas, guarda, vista Tierra con retraso.
+apps/web          PWA (React + Vite + three.js). Preflight, vista del astronauta (#ship) y del médico en Tierra (#ground).
 firmware          ESP32 con PlatformIO. Conexión Wi-Fi, NTP y envío del contrato al servidor.
 ```
 
@@ -40,6 +40,26 @@ npm run sim -- --scenario co
 Para la demo de estrés, primero corre `normal` durante 1 minuto: el servidor calcula el pulso base personal con esas lecturas, y si el primer escenario ya es de estrés, la base sale alta y la regla no dispara.
 
 Escenarios del simulador: `normal`, `exercise`, `stress`, `co`, `hypoxia`, `depressurization`, `impact`, `offline`. Envía datos normales durante `--warmup` segundos (10 por defecto) y después aplica el escenario. Otras opciones: `--url`, `--key`, `--device`, `--interval`.
+
+## La app (Mission View)
+
+El cuerpo 3D de partículas viene de [mission-view](https://github.com/antonyto02/mission-view) y se adaptó a este backend: cada zona del cuerpo tiene un panel (Mind, Blood oxygen, Cabin air, Heart, Body) unido por una línea, y el color lo deciden las alertas del servidor. Las pantallas siguen el diseño de UI/UX:
+
+| Pantalla | Cuándo aparece |
+| --- | --- |
+| Preflight (revisando / listo) | Al abrir la app. Revisa el enlace con la Nave y que cada sensor esté leyendo. `Start mission` se habilita cuando todo está en verde. |
+| Astronauta: nominal | Todo bien. |
+| Astronauta: peligro | Alerta crítica, por ejemplo fuga de CO: aviso central, panel en rojo con qué pasó y qué hacer, botón `Acknowledge`. |
+| Astronauta: impacto | "Are you OK?" con cuenta de 30 s. Sin respuesta (o con `Call the crew`) escala a peligro. |
+| Astronauta: síntomas | Botón `How do you feel?`. El astronauta decide si lo comparte con Tierra. |
+| Astronauta: sin señal | 10 s sin paquetes de la pulsera, o sin conexión con el servidor. |
+| Tierra | `#ground`. Los mismos datos con retraso, bitácora con hora de envío y de llegada, y exportar reporte. |
+
+En el preflight se elige la fuente: **Live wristband** (la pulsera real) o **Simulation** (el nodo simulado `sim-01` del servidor). Durante la misión, el enlace `Simulator` del pie (o la tecla `S`) muestra la barra de escenarios; las teclas `1` a `8` los lanzan y `← Live wristband` regresa a la pulsera.
+
+**Modo demo sin servidor.** Si la app no encuentra el servidor (o se abre con `?demo`), corre sola: el simulador y el motor de reglas de `packages/shared` se ejecutan en el navegador, así que las alertas son las mismas. Sirve para publicar solo `apps/web` (por ejemplo en Vercel, con `VITE_STANDALONE=1`) y enseñarla sin laptop-Nave. Opciones: `?delay=15` (retraso de Tierra en segundos) y `?scale=1` (velocidad de las reglas; por defecto 0.1).
+
+Otros parámetros: `?api=http://192.168.137.1:3000` apunta la app a otra Nave (también se puede escribir en el preflight). El nombre del producto está en `apps/web/src/config.ts`, y los textos cortos de cada alerta en `apps/web/src/model/copy.ts`: si backend agrega una regla, ahí se le pone su zona del cuerpo y su frase.
 
 ## Modo Nave completo (demo)
 
@@ -77,6 +97,7 @@ RULE_TIME_SCALE=0.1 GROUND_DELAY_SEC=60 docker compose up -d --build
 | `GET` | `/api/lecturas?deviceId=&minutes=` | Historial reciente. |
 | `GET` | `/api/alertas?active=1` | Alertas (activas o recientes). |
 | `POST` | `/api/alertas/:id/ack` | Reconocer una alerta. |
+| `POST` | `/api/alertas/:id/escalate` | "Call the crew": escala un impacto a peligro sin esperar los 30 s. |
 | `POST` / `GET` | `/api/sintomas` | Registro manual de síntomas. |
 | `POST` | `/api/sim/:escenario` | Lanza un escenario simulado desde la app. Pasa por el mismo motor de reglas. Body opcional: `deviceId`, `warmupSec` (0), `rampSec` (20). |
 | `POST` | `/api/sim/stop` | Detiene la simulación. |

@@ -15,7 +15,7 @@ import {
   type Telemetry,
 } from "@astro/shared";
 import { deviceKeys, env } from "./env.js";
-import { NODE_OFFLINE, RULES, RuleEngine, THRESHOLDS, type RuleHit } from "./rules.js";
+import { IMPACT_NO_RESPONSE, NODE_OFFLINE, RULES, RuleEngine, THRESHOLDS, type RuleHit } from "./rules.js";
 import { SCENARIOS, createSimulator, isScenario } from "./sim.js";
 
 const prisma = new PrismaClient();
@@ -249,7 +249,31 @@ app.post("/api/alertas/:id/ack", async (req, res) => {
   }
   const updated = await prisma.alert.update({ where: { id }, data });
   emit(EVENTS.alertAck, toAlert(updated));
+  // "I'm OK" tras un impacto también cierra la alerta escalada, si ya existía.
+  if (row.ruleId === "impact") {
+    engine.release(row.deviceId, IMPACT_NO_RESPONSE);
+    await closeAlert(row.deviceId, IMPACT_NO_RESPONSE);
+  }
   res.json(toAlert(updated));
+});
+
+/** "Call the crew": escala un impacto a peligro sin esperar los 30 s. */
+app.post("/api/alertas/:id/escalate", async (req, res) => {
+  const row = await prisma.alert.findUnique({ where: { id: Number(req.params.id) } });
+  if (!row) return res.status(404).json({ error: "not_found" });
+  if (row.ruleId !== "impact" || row.endedAt) return res.status(409).json({ error: "not_escalable" });
+  const rule = RULES.find((r) => r.id === IMPACT_NO_RESPONSE)!;
+  if (engine.force(row.deviceId, rule.id, Date.now())) {
+    await openAlert(row.deviceId, {
+      ruleId: rule.id,
+      level: rule.level,
+      title: rule.title,
+      action: rule.action,
+      message: "The astronaut asked for help after a strong impact.",
+      values: (row.values ?? {}) as Record<string, unknown>,
+    });
+  }
+  res.json({ ok: true });
 });
 
 app.post("/api/sintomas", async (req, res) => {
