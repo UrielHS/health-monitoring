@@ -15,6 +15,11 @@ const envSchema = z.object({
   /** Lecturas en reposo usadas para calcular el pulso base personal. */
   BASELINE_SAMPLES: z.coerce.number().int().min(5).default(30),
   CORS_ORIGIN: z.string().default("*"),
+  /** Permite lanzar escenarios simulados desde la app (POST /api/sim/:escenario). */
+  SIM_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
 });
 
 export const env = envSchema.parse(process.env);

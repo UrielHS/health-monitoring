@@ -37,6 +37,8 @@ npm run dev:web             # http://localhost:5173   (vista Tierra: http://loca
 npm run sim -- --scenario co
 ```
 
+Para la demo de estrés, primero corre `normal` durante 1 minuto: el servidor calcula el pulso base personal con esas lecturas, y si el primer escenario ya es de estrés, la base sale alta y la regla no dispara.
+
 Escenarios del simulador: `normal`, `exercise`, `stress`, `co`, `hypoxia`, `depressurization`, `impact`, `offline`. Envía datos normales durante `--warmup` segundos (10 por defecto) y después aplica el escenario. Otras opciones: `--url`, `--key`, `--device`, `--interval`.
 
 ## Modo Nave completo (demo)
@@ -62,6 +64,7 @@ RULE_TIME_SCALE=0.1 GROUND_DELAY_SEC=60 docker compose up -d --build
 | `OFFLINE_AFTER_SEC` | `10` | Segundos sin datos antes de la alerta "sin señal" |
 | `RULE_TIME_SCALE` | `1` | Multiplica la duración mínima de las reglas (`0.1` = 10 veces más rápido) |
 | `BASELINE_SAMPLES` | `30` | Lecturas en reposo para calcular el pulso base |
+| `SIM_ENABLED` | `true` | Permite lanzar escenarios desde la app |
 
 ## API
 
@@ -75,6 +78,9 @@ RULE_TIME_SCALE=0.1 GROUND_DELAY_SEC=60 docker compose up -d --build
 | `GET` | `/api/alertas?active=1` | Alertas (activas o recientes). |
 | `POST` | `/api/alertas/:id/ack` | Reconocer una alerta. |
 | `POST` / `GET` | `/api/sintomas` | Registro manual de síntomas. |
+| `POST` | `/api/sim/:escenario` | Lanza un escenario simulado desde la app. Pasa por el mismo motor de reglas. Body opcional: `deviceId`, `warmupSec` (0), `rampSec` (20). |
+| `POST` | `/api/sim/stop` | Detiene la simulación. |
+| `GET` | `/api/sim` | Estado del simulador y escenarios disponibles. |
 
 Socket.IO: namespace `/ship` en tiempo real y `/ground` con retraso (cada evento llega envuelto con `originalAt` y `deliveredAt`). Eventos: `snapshot`, `telemetry`, `alert`, `alert:resolved`, `alert:ack`, `node:status`, `symptom`.
 

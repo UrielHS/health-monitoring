@@ -16,6 +16,7 @@ import {
 } from "@astro/shared";
 import { deviceKeys, env } from "./env.js";
 import { NODE_OFFLINE, RULES, RuleEngine, THRESHOLDS, type RuleHit } from "./rules.js";
+import { SCENARIOS, createSimulator, isScenario } from "./sim.js";
 
 const prisma = new PrismaClient();
 const engine = new RuleEngine();
@@ -179,19 +180,21 @@ app.get("/api/config", (_req, res) => {
   });
 });
 
+/** Guarda una lectura y, si no es duplicada, la procesa en vivo. La usan la pulsera y el simulador. */
+async function ingestOne(t: Telemetry): Promise<{ duplicate: boolean }> {
+  const now = Date.now();
+  const reading: Reading = { ...t, ts: resolveTs(t, now, t.bootMs), receivedAt: now };
+  const { count } = await prisma.reading.createMany({ data: [toRow(reading)], skipDuplicates: true });
+  if (count === 0) return { duplicate: true };
+  await processLive(reading);
+  return { duplicate: false };
+}
+
 app.post("/api/telemetria", requireDeviceKey, async (req, res) => {
   const parsed = telemetrySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "invalid_payload", issues: parsed.error.issues });
-
-  const now = Date.now();
-  const t = parsed.data;
-  const reading: Reading = { ...t, ts: resolveTs(t, now, t.bootMs), receivedAt: now };
-
-  const { count } = await prisma.reading.createMany({ data: [toRow(reading)], skipDuplicates: true });
-  if (count === 0) return res.json({ ok: true, duplicate: true });
-
-  await processLive(reading);
-  res.json({ ok: true, duplicate: false });
+  const { duplicate } = await ingestOne(parsed.data);
+  res.json({ ok: true, duplicate });
 });
 
 /** Lecturas acumuladas en flash durante una caída de Wi-Fi: se guardan, no disparan alertas viejas. */
@@ -266,6 +269,60 @@ app.get("/api/sintomas", async (req, res) => {
     take: 100,
   });
   res.json(rows);
+});
+
+// ---------- Simulador controlado desde la app ----------
+// Las lecturas simuladas entran por ingestOne: mismo motor de reglas, misma base de datos
+// y misma vista Tierra que la pulsera real. Solo corre un escenario a la vez.
+
+let simRun: { sim: ReturnType<typeof createSimulator>; timer: NodeJS.Timeout; startedAt: number } | null = null;
+
+function stopSim() {
+  if (!simRun) return;
+  clearInterval(simRun.timer);
+  simRun = null;
+}
+
+const simStatus = () =>
+  simRun
+    ? { running: true, scenario: simRun.sim.scenario, phase: simRun.sim.phase(), deviceId: simRun.sim.deviceId, startedAt: simRun.startedAt }
+    : { running: false };
+
+app.get("/api/sim", (_req, res) => {
+  res.json({ ...simStatus(), scenarios: SCENARIOS, enabled: env.SIM_ENABLED });
+});
+
+app.post("/api/sim/stop", (_req, res) => {
+  stopSim();
+  res.json(simStatus());
+});
+
+app.post("/api/sim/:scenario", async (req, res) => {
+  if (!env.SIM_ENABLED) return res.status(403).json({ error: "sim_disabled" });
+  const scenario = req.params.scenario;
+  if (!isScenario(scenario)) return res.status(400).json({ error: "invalid_scenario", scenarios: SCENARIOS });
+
+  const body = (req.body ?? {}) as { deviceId?: string; warmupSec?: number; rampSec?: number };
+  stopSim();
+  const sim = createSimulator({
+    deviceId: typeof body.deviceId === "string" && body.deviceId ? body.deviceId : "sim-01",
+    scenario,
+    warmupSec: Number(body.warmupSec ?? 0),
+    rampSec: Number(body.rampSec ?? 20),
+  });
+
+  const tick = async () => {
+    const packet = sim.next();
+    if (!packet) return stopSim(); // "offline": deja de enviar y salta la alerta de sin señal
+    try {
+      await ingestOne(telemetrySchema.parse(packet));
+    } catch (e) {
+      console.error("[sim] error:", e);
+    }
+  };
+  simRun = { sim, timer: setInterval(tick, 2000), startedAt: Date.now() };
+  await tick();
+  res.json(simStatus());
 });
 
 // Express 5 pasa aquí los errores de rutas async.
