@@ -8,10 +8,12 @@ interface Props {
   evaluation: Evaluation;
   ground?: boolean;
   onAck?: (alertId: number) => void;
+  /** Abre el registro de síntomas (la alerta de estrés pregunta antes de concluir). */
+  onFeel?: () => void;
 }
 
 /** Panel de una zona del cuerpo: valor, por qué importa y, si hay alerta, qué pasó y qué hacer. */
-export function ZonePanel({ zone, evaluation, ground, onAck }: Props) {
+export function ZonePanel({ zone, evaluation, ground, onAck, onFeel }: Props) {
   const info = ZONES[zone];
   const z = evaluation.zones[zone];
   const alarm = z.level === "danger" || z.level === "caution";
@@ -42,6 +44,11 @@ export function ZonePanel({ zone, evaluation, ground, onAck }: Props) {
                       </button>
                     )}
                   </div>
+                )}
+                {!ground && onFeel && z.alert?.ruleId === "acute_stress" && (
+                  <button type="button" className="link" onClick={onFeel}>
+                    Coffee? Poor sleep? Log how you feel
+                  </button>
                 )}
                 {z.alert?.ackAt && (
                   <p className="panel-ack">

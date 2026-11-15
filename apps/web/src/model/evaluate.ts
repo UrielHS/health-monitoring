@@ -41,8 +41,8 @@ const fix = (v: number | null | undefined, d = 0) => (v == null ? "—" : v.toFi
 
 const offlineZone = (): ZoneState => ({ level: "offline", value: "—" });
 
-/** El CO del nodo real es un índice relativo (sección 10 del documento); solo el simulador habla de ppm. */
-export const coUnit = (r: Reading | null) => (r?.source === "sim" ? "ppm CO" : "CO index");
+/** El MQ-7 no está calibrado: el CO es un índice relativo de 0 a 40, nunca ppm (sección 12 del documento). */
+export const CO_UNIT = "CO index (relative)";
 
 function emptyEvaluation(banner: Banner | null): Evaluation {
   return {
@@ -184,7 +184,7 @@ export function evaluate({ reading: r, alerts, node, linked, audience }: Evaluat
       key: "co",
       label: "CO",
       value: coReady ? fix(coPpm, coPpm != null && coPpm < 10 ? 1 : 0) : "…",
-      unit: coUnit(r),
+      unit: CO_UNIT,
       level: coReady ? envLevel(["co_critical"], ["co_warning"]) : "unreliable",
     },
     {
@@ -203,6 +203,9 @@ export function evaluate({ reading: r, alerts, node, linked, audience }: Evaluat
     const which: EnvReading["key"] = a.ruleId.startsWith("co") ? "co" : a.ruleId.startsWith("cabin_temp") ? "temp" : a.ruleId.startsWith("humidity") ? "rh" : "pressure";
     const e = env.find((x) => x.key === which)!;
     cabin = fromAlert(a, e.value, e.unit);
+    // El texto del servidor habla de "ppm"; en pantalla el CO siempre es el índice relativo.
+    if (!ground && which === "co")
+      cabin.detail = a.ruleId === "co_critical" ? `CO index is ${e.value} of 40. CO has no color and no smell.` : `CO index is ${e.value} of 40, above normal.`;
   } else
     cabin = {
       level: "nominal",
@@ -214,11 +217,12 @@ export function evaluate({ reading: r, alerts, node, linked, audience }: Evaluat
   const zones: Record<ZoneId, ZoneState> = { head, heart, lungs, body, cabin };
 
   // ---------- aviso central: la alerta más grave ----------
+  // Solo el peligro lleva aviso central; la atención se queda en su panel (sección 12).
   let banner: Banner | null = null;
-  const top = ranked.find((a) => a.ruleId !== "impact" || ground);
-  if (top && levelOf(top) !== "unreliable") {
+  const top = ranked.find((a) => levelOf(a) === "danger");
+  if (top) {
     banner = {
-      level: levelOf(top),
+      level: "danger",
       title: top.title,
       action: ground ? (RULE_COPY[top.ruleId]?.ground ?? top.action) : (RULE_COPY[top.ruleId]?.short ?? top.action),
       note:
@@ -228,8 +232,6 @@ export function evaluate({ reading: r, alerts, node, linked, audience }: Evaluat
             : `Your oximeter can’t see CO. Ignore its ${fix(spo2)}%.`
           : undefined,
     };
-  } else if (!vitalsOk && !ground) {
-    banner = { level: "unreliable", title: zones.heart.headline ?? "Reading not reliable", action: "Re-seat the sensor. Hold still." };
   }
 
   return {
