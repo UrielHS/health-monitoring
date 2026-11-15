@@ -59,6 +59,8 @@ El cuerpo 3D de partículas viene de [mission-view](https://github.com/antonyto0
 | Astronauta: sin señal | 10 s sin paquetes de la pulsera, o sin conexión con el servidor. |
 | Tierra | `#ground`. Los mismos datos con retraso, gráficas de tendencia (pulso, SpO2, índice de CO), bitácora con hora de envío y de llegada, y exportar reporte. |
 
+**Para el jurado:** en el preflight, el botón **Explore with simulated data** entra directo con un tripulante y una misión ficticios, abre un tour la primera vez y muestra una tarjeta que explica cada escenario. La guía de usuario con capturas está en `#guide`.
+
 En el preflight se elige la fuente: **Live wristband** (la pulsera real) o **Simulation** (el nodo simulado `sim-01` del servidor). Durante la misión, el enlace `Simulator` del pie (o la tecla `S`) muestra la barra de escenarios; las teclas `1` a `8` los lanzan y `← Live wristband` regresa a la pulsera.
 
 **Modo demo sin servidor.** Si la app no encuentra el servidor (o se abre con `?demo`), corre sola: el simulador y el motor de reglas de `packages/shared` se ejecutan en el navegador, así que las alertas son las mismas. Sirve para publicar solo `apps/web` (por ejemplo en Vercel, con `VITE_STANDALONE=1`) y enseñarla sin servidor. Opciones: `?delay=15` (retraso de Tierra en segundos) y `?scale=1` (velocidad de las reglas; por defecto 0.1).

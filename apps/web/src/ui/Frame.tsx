@@ -10,13 +10,24 @@ const STATUS_COLOR: Record<Level, string> = {
   offline: "var(--off)",
 };
 
-export function Header({ level, view, simulated, meta }: { level: Level; view: "ship" | "ground"; simulated?: boolean; meta: ReactNode }) {
+interface HeaderProps {
+  level: Level;
+  view: "ship" | "ground";
+  simulated?: boolean;
+  /** Primera línea de la derecha: quién se monitorea. */
+  who: ReactNode;
+  /** Segunda línea: tiempo de misión, retraso o estado del enlace. */
+  detail: ReactNode;
+}
+
+export function Header({ level, view, simulated, who, detail }: HeaderProps) {
   return (
     <header className="bar top">
       <div
         className={`status ${level === "danger" ? "blink" : ""}`}
         style={{ ["--status" as string]: STATUS_COLOR[level] }}
         role="status"
+        data-tour="status"
       >
         <span className="dot" aria-hidden />
         <span>{LEVEL_WORD[level]}</span>
@@ -26,11 +37,17 @@ export function Header({ level, view, simulated, meta }: { level: Level; view: "
         <a href="#ship" className={`tab ${view === "ship" ? "on" : ""}`}>
           Astronaut
         </a>
-        <a href="#ground" className={`tab ${view === "ground" ? "on" : ""}`}>
+        <a href="#ground" className={`tab ${view === "ground" ? "on" : ""}`} data-tour="views">
           Ground medical
         </a>
+        <a href="#guide" className="tab" data-tour="guide">
+          Guide
+        </a>
       </nav>
-      <p className="meta">{meta}</p>
+      <div className="meta mission" data-tour="mission">
+        <p className="mission-who">{who}</p>
+        <p>{detail}</p>
+      </div>
     </header>
   );
 }

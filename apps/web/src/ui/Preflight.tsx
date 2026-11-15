@@ -105,6 +105,9 @@ export function Preflight() {
             <a href="#ground" className="tab">
               Ground medical
             </a>
+            <a href="#guide" className="tab">
+              Guide
+            </a>
           </nav>
           <p className="meta">Preflight · prototype, not a medical device</p>
         </header>
@@ -148,6 +151,27 @@ export function Preflight() {
             ))}
           </ul>
         </section>
+
+        {!ready && (
+          <section className="explore" aria-labelledby="explore-title">
+            <div>
+              <p className="eyebrow">No wristband at hand?</p>
+              <h2 id="explore-title">Explore AURA with simulated data</h2>
+              <p>
+                A fictional crew member on a long mission. Launch a CO leak, a depressurization or an impact and watch what
+                the astronaut and the ground team see. Everything simulated is labeled SIMULATED.
+              </p>
+            </div>
+            <div className="explore-actions">
+              <button type="button" className="btn go" onClick={m.exploreSim}>
+                Explore with simulated data →
+              </button>
+              <a className="link" href="#guide">
+                Read the user guide first
+              </a>
+            </div>
+          </section>
+        )}
 
         <div className="pre-body" style={{ opacity: ready ? 1 : fresh ? 0.75 : 0.45 }}>
           <Scene evaluation={evaluation} bpm={ready ? (reading?.vitals.bpm ?? null) : null} />

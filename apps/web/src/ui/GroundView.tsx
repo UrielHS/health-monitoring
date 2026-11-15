@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { APP_NAME } from "@/config";
+import { APP_NAME, DEMO_MISSION } from "@/config";
 import { pickDevice, useMission, useNow } from "@/data/mission";
 import type { LogItem } from "@/data/mirror";
 import { evaluate } from "@/model/evaluate";
@@ -70,7 +70,8 @@ export function GroundView() {
           level={evaluation.overall}
           view="ground"
           simulated={reading?.source === "sim"}
-          meta={lag == null ? "Nothing received from the ship yet" : `Last data ${lag} s old on arrival${stale > 15_000 ? ` · ${ago(stale)} ago` : ""}`}
+          who={reading?.source === "sim" ? `Flight surgeon · crew member ${DEMO_MISSION.crew} (fictional)` : `Flight surgeon · ${dev.deviceId ?? "no device yet"}`}
+          detail={lag == null ? "Nothing received from the crew yet" : `Last data ${lag} s old on arrival${stale > 15_000 ? ` · ${ago(stale)} ago` : ""}`}
         />
         {hud.mobile && <div className="spacer" />}
 

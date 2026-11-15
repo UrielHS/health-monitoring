@@ -26,6 +26,8 @@ type Mission = {
   started: boolean;
   start: () => void;
   backToPreflight: () => void;
+  /** Atajo para quien evalúa sin pulsera: datos simulados y directo a la misión. */
+  exploreSim: () => void;
   sim: SimStatus;
   /** Último escenario pedido (incluye "offline", que detiene el envío). */
   scenario: Scenario | null;
@@ -206,6 +208,11 @@ export function MissionProvider({ children }: { children: ReactNode }) {
     setSource,
     started,
     start: () => {
+      setStarted(true);
+      session.set("aura.started", "1");
+    },
+    exploreSim: () => {
+      setSource("sim");
       setStarted(true);
       session.set("aura.started", "1");
     },
