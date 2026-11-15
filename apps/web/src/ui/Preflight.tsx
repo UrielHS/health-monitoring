@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import { APP_NAME, APP_TAGLINE } from "@/config";
 import { pickDevice, useMission, useNow } from "@/data/mission";
 import { preflightEvaluation, sensorChecks, type SensorStatus } from "@/model/evaluate";
 import { Scene } from "@/scene/Scene";
+import { Brand } from "./Brand";
 import { ago } from "./format";
 import { useHudScale } from "./useHudScale";
 
@@ -98,9 +98,7 @@ export function Preflight() {
     <div className={`app aud-ship ${hud.mobile ? "mobile" : ""}`}>
       <div className="hud" style={hud.style}>
         <header className="bar top">
-          <p className="brand">
-            {APP_NAME} <span>· {APP_TAGLINE}</span>
-          </p>
+          <Brand />
           <nav className="tabs" aria-label="Views">
             <a href="#ground" className="tab">
               Ground medical
