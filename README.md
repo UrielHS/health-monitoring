@@ -46,6 +46,10 @@ The 3D particle body comes from [mission-view](https://github.com/antonyto02/mis
 - **No signal.** After 10 s without packets the app says so. Silence is never shown as "all good".
 - **Ground medical view** (`#ground`). The same data with a delay, trend charts for pulse, blood oxygen and CO index, an event log showing when each event happened on board and when it reached Earth, and a report export.
 
+- **User guide** (`#guide`). Every part of the screen, the status colors, the five panels and the eight scenarios, with annotated screenshots.
+
+**For judges and first-time users:** on the first screen press **Explore with simulated data**. A fictional crew member appears, a short tour points at each part of the screen, and a card above the scenario buttons explains what each scenario simulates and what to look for.
+
 Simulated data is always labeled **SIMULATED**. Carbon monoxide is shown as a relative index from 0 to 40, not ppm, because the MQ-7 sensor is not calibrated.
 
 ## Quick start

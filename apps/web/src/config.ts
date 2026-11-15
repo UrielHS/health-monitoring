@@ -28,3 +28,21 @@ export const LOCAL_GROUND_DELAY_SEC = Number(params.get("delay") ?? 60);
 export const LOCAL_RULE_TIME_SCALE = Number(params.get("scale") ?? 0.1);
 
 export const SIM_DEVICE_ID = "sim-01";
+
+/**
+ * Contexto de misión ficticio para la demo con datos simulados. Se muestra siempre como ficticio
+ * (honestidad del dato): no es una misión ni una persona reales.
+ */
+export const DEMO_MISSION = {
+  crew: "CM-1",
+  /** Tiempo de misión transcurrido (MET) al abrir la app, en ms: día 47, 14:22:05. */
+  metAtLoadMs: (((47 * 24 + 14) * 60 + 22) * 60 + 5) * 1000,
+  loadedAt: Date.now(),
+};
+
+/** MET con el formato de NASA: DDD:HH:MM:SS. */
+export function missionElapsed(now: number): string {
+  const s = Math.floor((DEMO_MISSION.metAtLoadMs + now - DEMO_MISSION.loadedAt) / 1000);
+  const p = (n: number, w = 2) => String(n).padStart(w, "0");
+  return `${p(Math.floor(s / 86400), 3)}:${p(Math.floor(s / 3600) % 24)}:${p(Math.floor(s / 60) % 60)}:${p(s % 60)}`;
+}

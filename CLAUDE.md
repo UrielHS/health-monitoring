@@ -66,6 +66,7 @@ La app (integrada en `main` con el PR #2):
 - Pantallas: preflight (revisando / listo), astronauta nominal, peligro, impacto ("Are you OK?" con 30 s), síntomas, sin señal y Tierra (`#ground`).
 - En el preflight se elige la fuente: **Live wristband** o **Simulation** (`sim-01` del servidor). La tecla `S` muestra la barra de escenarios y las teclas `1` a `8` los lanzan.
 - **Modo demo sin servidor** (`?demo` o `VITE_STANDALONE=1`, o si no encuentra el servidor): el simulador y las reglas de `packages/shared` corren en el navegador. Es solo el respaldo.
+- **Para el jurado:** botón "Explore with simulated data" en el preflight, tour la primera vez (`?notour` lo apaga), tarjeta que explica cada escenario y guía de usuario con capturas en `#guide`. Los textos de los escenarios están en `apps/web/src/model/scenarios.ts`; el tripulante (CM-1) y el tiempo de misión son ficticios y se dicen así en pantalla. Las capturas de la guía (`apps/web/public/guide/`) se toman de la app en modo `?demo&notour`; si cambia la interfaz, hay que volver a tomarlas.
 - El nombre del producto está en `apps/web/src/config.ts`. Los textos cortos y la zona del cuerpo de cada alerta, en `apps/web/src/model/copy.ts`: si backend agrega una regla, ahí se le asigna su zona y su frase.
 
 ## Contrato de telemetría
