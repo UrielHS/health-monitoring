@@ -7,7 +7,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/
 COPY apps/server/package.json apps/server/
-RUN npm ci --workspace @astro/server --include-workspace-root
+# install y no ci: si alguien agregó una dependencia y no actualizó el package-lock, la imagen igual se construye.
+RUN npm install --workspace @astro/server --include-workspace-root --no-audit --no-fund
 
 COPY packages/shared packages/shared
 COPY apps/server apps/server

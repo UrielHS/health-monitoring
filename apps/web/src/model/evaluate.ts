@@ -117,12 +117,14 @@ export function evaluate({ reading: r, alerts, node, linked, audience }: Evaluat
   const unreliable = (value = "—"): ZoneState => ({
     level: "unreliable",
     value,
-    headline: quality === "no_finger" ? "No finger on the sensor" : "Reading not reliable",
+    headline: quality === "no_finger" ? "No finger on the sensor" : quality === "no_sensor" ? "Pulse sensor not responding" : "Reading not reliable",
     detail:
       quality === "no_finger"
         ? "The pulse sensor is not touching the skin, so there is no number to trust."
-        : "Too much movement or noise in the pulse sensor.",
-    action: ground ? "Wait for a clean reading." : "Re-seat the sensor. Hold still.",
+        : quality === "no_sensor"
+          ? "The wristband cannot talk to its pulse sensor, so there is no number to trust."
+          : "Too much movement or noise in the pulse sensor.",
+    action: ground ? "Wait for a clean reading." : quality === "no_sensor" ? "Check the sensor cable." : "Re-seat the sensor. Hold still.",
   });
 
   // ---------- corazón ----------
@@ -208,7 +210,7 @@ export function evaluate({ reading: r, alerts, node, linked, audience }: Evaluat
       level: "nominal",
       value: fix(pressureKpa, 1),
       unit: "kPa",
-      note: coReady ? undefined : "CO sensor warming up · no CO alerts yet",
+      note: coReady ? undefined : coState === "no_sensor" ? "CO sensor not responding · no CO alerts" : "CO sensor warming up · no CO alerts yet",
     };
 
   const zones: Record<ZoneId, ZoneState> = { head, heart, lungs, body, cabin };
@@ -278,20 +280,26 @@ export function sensorChecks(r: Reading | null): SensorCheck[] {
   const ppgOk = quality === "ok" && bpm != null && spo2 != null;
   const climateOk = r.env.tempC != null && r.env.rh != null;
   const pressureOk = r.env.pressureKpa != null;
-  const motionOk = Number.isFinite(r.motion.accMag) && r.motion.accMag > 0;
+  const acc = r.motion.accMag;
+  const motionOk = r.motion.sensor !== "none" && acc !== null && Number.isFinite(acc) && acc > 0;
+  const motionPart = r.motion.sensor === "bmi160" ? "BMI160" : "MPU6050";
+  const ppgDetail =
+    quality === "no_finger" ? "MAX30100 · no finger on the sensor" : quality === "no_sensor" ? "MAX30100 · not responding" : "MAX30100 · finger moved, hold still";
+  const ppgValue = quality === "no_finger" ? "no finger" : quality === "no_sensor" ? "no sensor" : "noisy";
+  const coState = r.env.coState;
   return [
     {
       id: "ppg",
       name: "Pulse and blood oxygen",
-      detail: ppgOk ? "MAX30100 · finger detected" : quality === "no_finger" ? "MAX30100 · no finger on the sensor" : "MAX30100 · finger moved, hold still",
-      value: ppgOk ? `${fix(bpm)} BPM · ${fix(spo2)}%` : quality === "no_finger" ? "no finger" : "noisy",
+      detail: ppgOk ? "MAX30100 · finger detected" : ppgDetail,
+      value: ppgOk ? `${fix(bpm)} BPM · ${fix(spo2)}%` : ppgValue,
       status: ppgOk ? "ok" : "problem",
     },
     {
       id: "motion",
       name: "Motion",
-      detail: motionOk ? "MPU6050 · impact detection armed" : "MPU6050 · not responding",
-      value: motionOk ? `${r.motion.accMag.toFixed(2)} g` : "no data",
+      detail: motionOk ? `${motionPart} · impact detection armed` : `${motionPart} · not responding`,
+      value: motionOk ? `${acc.toFixed(2)} g` : "no data",
       status: motionOk ? "ok" : "problem",
     },
     {
@@ -311,9 +319,14 @@ export function sensorChecks(r: Reading | null): SensorCheck[] {
     {
       id: "co",
       name: "Carbon monoxide",
-      detail: r.env.coState === "ready" ? "MQ-7 · clean-air level set" : "MQ-7 · warming up, learning clean-air level",
-      value: r.env.coState === "ready" ? "ready" : "warming up",
-      status: r.env.coState === "ready" ? "ok" : "progress",
+      detail:
+        coState === "ready"
+          ? "MQ-7 · clean-air level set"
+          : coState === "no_sensor"
+            ? "MQ-7 · not responding"
+            : "MQ-7 · warming up, learning clean-air level",
+      value: coState === "ready" ? "ready" : coState === "no_sensor" ? "no sensor" : "warming up",
+      status: coState === "ready" ? "ok" : coState === "no_sensor" ? "problem" : "progress",
     },
   ];
 }
