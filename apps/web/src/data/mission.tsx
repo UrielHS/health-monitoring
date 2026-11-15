@@ -26,6 +26,8 @@ type Mission = {
   started: boolean;
   start: () => void;
   backToPreflight: () => void;
+  /** Atajo para quien evalúa sin pulsera: datos simulados y directo a la misión. */
+  exploreSim: () => void;
   sim: SimStatus;
   /** Último escenario pedido (incluye "offline", que detiene el envío). */
   scenario: Scenario | null;
@@ -116,6 +118,20 @@ export function MissionProvider({ children }: { children: ReactNode }) {
     backend.groundHistory().then((h) => mirrors.ground.seed(h, delay)).catch(() => {});
   }, [backend, mirrors, delay]);
 
+  // Historia reciente para las gráficas, en cuanto se sabe qué dispositivo es.
+  const trendDevice =
+    Object.keys(ground.readings)[0] ?? Object.values(ship.readings).sort((a, b) => b.deliveredAt - a.deliveredAt)[0]?.reading.deviceId ?? null;
+  useEffect(() => {
+    if (!backend || !trendDevice || delay == null) return;
+    backend
+      .readings(trendDevice, 10)
+      .then((rows) => {
+        mirrors.ground.seedReadings(rows, delay);
+        mirrors.ship.seedReadings(rows, 0);
+      })
+      .catch(() => {});
+  }, [backend, mirrors, trendDevice, delay]);
+
   // Estado del simulador (otra pantalla pudo haberlo lanzado).
   useEffect(() => {
     if (!backend) return;
@@ -192,6 +208,11 @@ export function MissionProvider({ children }: { children: ReactNode }) {
     setSource,
     started,
     start: () => {
+      setStarted(true);
+      session.set("aura.started", "1");
+    },
+    exploreSim: () => {
+      setSource("sim");
       setStarted(true);
       session.set("aura.started", "1");
     },

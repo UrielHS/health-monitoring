@@ -72,5 +72,7 @@ export interface Backend {
   simStop(): Promise<SimStatus>;
   /** Lo que Tierra ya tendría si hubiera estado conectada: alertas y síntomas compartidos recientes. */
   groundHistory(): Promise<{ alerts: Alert[]; symptoms: SymptomRow[] }>;
+  /** Lecturas recientes de un dispositivo (para las gráficas de tendencia), de la más vieja a la más nueva. */
+  readings(deviceId: string, minutes: number): Promise<Reading[]>;
   dispose(): void;
 }

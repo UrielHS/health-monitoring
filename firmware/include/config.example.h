@@ -4,8 +4,9 @@
 #define WIFI_SSID "nombre-de-la-red"
 #define WIFI_PASS "clave-de-la-red"
 
-// IP de la laptop que hace de Nave (docker compose). Ver con ipconfig / ifconfig.
-#define SERVER_URL "http://192.168.1.50:3000"
+// URL del servidor desplegado (HTTPS). Para pruebas locales: "http://<IP-de-tu-laptop>:3000".
+// Con HTTPS el firmware debe incluir el certificado raíz ISRG Root X1; nunca usar setInsecure().
+#define SERVER_URL "https://tu-servidor.example.com"
 #define API_KEY "dev-key"
 #define DEVICE_ID "wearable-01"
 

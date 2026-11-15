@@ -1,76 +1,137 @@
-# Astronaut Health Monitor
+# AURA · Astronaut Health Monitor
 
-Monitoreo de salud de astronautas para el reto **Create Health Monitoring Software for Astronauts on Space Missions** (NASA Space Apps 2026).
+Onboard health monitoring for astronauts, built for the NASA Space Apps Challenge 2026 challenge **Create Health Monitoring Software for Astronauts on Space Missions**.
 
-Una pulsera con ESP32 mide pulso, oxigenación, movimiento y el aire de la cabina, y publica por **MQTT** a un broker **Mosquitto** en la laptop "Nave". El servidor interpreta los datos al instante y alerta al astronauta en lenguaje simple, sin depender de la Tierra. Una vista de "médico en Tierra" recibe los mismos datos con retraso.
+A wristband with an ESP32 measures pulse, blood oxygen, motion and cabin air, and publishes the readings over **MQTT** to a **Mosquitto** broker. A server interprets the readings with fixed rules and tells the astronaut, in plain language, what happened, why it matters and what to do. A "ground medical" view receives the same data with a delay, to show that the astronaut acts without waiting for Earth.
+
+> **Prototype, not a medical device.** It is a proof of concept for the onboard interpretation and decision layer. Sensors are swappable for certified hardware, thresholds are not clinical criteria, and critical scenarios were validated through simulation.
+
+Versión en español para el equipo: [`README.es.md`](README.es.md).
+
+## Why
+
+Today an astronaut's health is measured with separate tools: a smart shirt for the body, handheld analyzers for the air, periodic tests for the mind. Most of the interpretation happens on Earth. On a mission to the Moon or Mars, communication delays make that too slow.
+
+AURA puts body, air and self-reported symptoms in one place, interprets them next to the astronaut, and turns every alert into an action. Two examples of rules that need more than one sensor:
+
+- **High pulse while moving is exercise, not an alarm.** High pulse at rest, well above the person's own baseline, is flagged as possible stress.
+- **Carbon monoxide raises the alarm on its own.** A pulse oximeter cannot tell hemoglobin carrying CO from hemoglobin carrying oxygen, so it keeps reading 98% during CO poisoning. The app says so explicitly and tells the astronaut to trust the CO alarm.
+
+## What is in this repository
 
 ```
-ESP32 ──MQTT──▶ Mosquitto ──▶ servidor (reglas, Postgres) ──Socket.IO──▶ app (#ship / #ground)
-                                   ▲
-              simulador de la app ─┘  (POST /api/sim/:escenario, mismo flujo)
+packages/shared   Telemetry contract v1 (Zod), MQTT topics, rule engine and simulator. Single source of truth.
+apps/server       Express + Socket.IO + Prisma/PostgreSQL + MQTT client. Rules, alerts, the delayed ground view.
+apps/web          PWA (React + Vite + three.js). Preflight check, astronaut view (#ship) and ground medical view (#ground).
+firmware          ESP32 with PlatformIO. Wi-Fi, NTP and publishing the telemetry contract over MQTT.
+mosquitto         Broker configuration (users and per-topic permissions are generated at startup).
+docs/hardware     Hand-drawn diagrams of the device.
 ```
 
-## Estructura
-
 ```
-packages/shared   Contrato de telemetría v1 (Zod), topics MQTT, motor de reglas y simulador. Fuente única de verdad.
-apps/server       Express + Socket.IO + Prisma/PostgreSQL + cliente MQTT. Reglas, alertas, vista Tierra con retraso.
-apps/web          PWA (React + Vite + three.js). Preflight, vista del astronauta (#ship) y del médico en Tierra (#ground).
-firmware          ESP32 con PlatformIO. Wi-Fi, NTP y publicación MQTT del contrato.
-mosquitto         Configuración del broker (usuarios y permisos se generan al arrancar).
+ESP32 wristband ──MQTT astro/v1/<deviceId>/telemetry──▶ Mosquitto ──▶ Server
+   │  local alerts (OLED + buzzer), no network needed      (HTTP POST /api/telemetria as fallback)
+                                                                          │  Zod → PostgreSQL → rule engine
+                                                                          ├─ Socket.IO /ship   → astronaut view (real time)
+                                                                          └─ Socket.IO /ground → ground view (delayed)
+Simulator ── POST /api/sim/:scenario (from the app) or npm run sim ──▶ same path as the wristband
 ```
 
-## Arranque (Windows, PowerShell)
+## The app
 
-Requisitos: Node 20+, Docker Desktop abierto.
+The 3D particle body comes from [mission-view](https://github.com/antonyto02/mission-view). Each body zone has a panel (Mind, Blood oxygen, Cabin air, Heart, Body) joined to the body by a line, and its color is decided by the server's alerts.
 
-```powershell
-# 0. Solo la primera vez, o si cambió alguna dependencia
+- **Preflight.** Checks the link to the server and that every sensor is reading. `Start mission` unlocks when everything is green.
+- **Astronaut view.** Overall status in one word, five panels, and for each alert: what happened, why it matters, what to do, and an `Acknowledge` button. Danger adds a red banner; caution only turns its panel amber.
+- **Impact.** "Are you OK?" with a 30 s countdown. With no answer, or with `Call the crew`, it escalates to danger.
+- **Symptoms.** `How do you feel?` logs a symptom from 1 to 5. The astronaut decides whether to share it with the ground team.
+- **No signal.** After 10 s without packets the app says so. Silence is never shown as "all good".
+- **Ground medical view** (`#ground`). The same data with a delay, trend charts for pulse, blood oxygen and CO index, an event log showing when each event happened on board and when it reached Earth, and a report export.
+
+- **User guide** (`#guide`). Every part of the screen, the status colors, the five panels and the eight scenarios, with annotated screenshots.
+
+**For judges and first-time users:** on the first screen press **Explore with simulated data**. A fictional crew member appears, a short tour points at each part of the screen, and a card above the scenario buttons explains what each scenario simulates and what to look for.
+
+Simulated data is always labeled **SIMULATED**. Carbon monoxide is shown as a relative index from 0 to 40, not ppm, because the MQ-7 sensor is not calibrated.
+
+## Quick start
+
+Requirements: Node 20+ and Docker.
+
+```bash
 npm install
 
-# 1. Base de datos y broker
+# 1. Database and MQTT broker
 docker compose up -d db mosquitto
-docker ps          # db "healthy" y mosquitto "Up" con 0.0.0.0:1883->1883/tcp
 
-# 2. Tablas (la primera vez y cada vez que cambie prisma/schema.prisma)
+# 2. Server
+cp apps/server/.env.example apps/server/.env
 npm run db:push
+npm run dev:server          # http://localhost:3000/api/health  (logs "[mqtt] connected")
 
-# 3. Servidor (terminal 1)
-npm run dev:server   # debe decir: [mqtt] conectado a mqtt://127.0.0.1:1883 como server
-
-# 4. App (terminal 2)
-npm run dev:web      # http://localhost:5173   (Tierra: http://localhost:5173/#ground)
+# 3. App (another terminal)
+npm run dev:web             # http://localhost:5173   (ground view: http://localhost:5173/#ground)
 ```
 
-Si en el paso 3 ves `ECONNREFUSED 127.0.0.1:1883`, el broker no está arriba: `docker compose logs mosquitto`.
+In the preflight screen choose **Simulation**, press `Start mission`, and launch scenarios from the bar at the bottom (or with keys `1` to `8`): `normal`, `exercise`, `stress`, `co`, `hypoxia`, `depressurization`, `impact`, `offline`.
 
-Prueba rápida sin el ESP32, en otra terminal: `npm run sim -- --scenario co --mqtt`. Se conecta al broker como la **pulsera de prueba `test-01`** y recorre exactamente el camino de la pulsera real, así que en la app aparece con la fuente **Live wristband**. Es solo para probar el broker; para la demo usa el simulador de la app o la pulsera real.
+To test the broker without the ESP32, run `npm run sim -- --scenario co --mqtt` in another terminal: it connects as the test wristband `test-01` and follows exactly the real wristband's path, so it shows up under **Live wristband**.
 
-Para que el ESP32 llegue a esta laptop, abre los puertos una vez (PowerShell **como administrador**):
+To try the app with no server at all, open `http://localhost:5173/?demo`. The same simulator and rule engine run in the browser.
 
-```powershell
-New-NetFirewallRule -DisplayName "AURA MQTT 1883" -Direction Inbound -Protocol TCP -LocalPort 1883 -Action Allow -Profile Any
-New-NetFirewallRule -DisplayName "AURA API 3000" -Direction Inbound -Protocol TCP -LocalPort 3000 -Action Allow -Profile Any
-```
+For a demo, speed up the rules with `RULE_TIME_SCALE=0.1`. Before the stress scenario, let `normal` run for a minute so the server can learn the resting pulse baseline.
 
-## Pulsera por MQTT
+## Server environment variables
 
-| Topic | Quién publica | Qué lleva |
+| Variable | Default | Purpose |
 | --- | --- | --- |
-| `astro/v1/<deviceId>/telemetry` | Pulsera (y la pulsera de prueba de `npm run sim -- --mqtt`) | JSON del contrato v1 |
-| `astro/v1/<deviceId>/status` | Pulsera (`online`, retenido) y el broker por Last Will (`offline`) | texto |
-| `astro/v1/<deviceId>/errors` | Servidor, cuando rechaza un paquete | `{ "error", "issues" }` |
-| `astro/v1/config` | Servidor, retenido | lo mismo que `GET /api/config` |
+| `DATABASE_URL` | — | PostgreSQL connection |
+| `MQTT_ENABLED` | `true` | `false` = HTTP only |
+| `MQTT_URL` | `mqtt://127.0.0.1:1883` | Broker address |
+| `MQTT_USER` / `MQTT_PASS` | `server` / `clave-server` | Must match `MQTT_SERVER_PASS` in the root `.env` |
+| `DEVICE_API_KEYS` | `dev-key` | Keys for the HTTP fallback (`x-api-key` header), comma separated |
+| `GROUND_DELAY_SEC` | `60` | Delay of the ground view |
+| `OFFLINE_AFTER_SEC` | `10` | Seconds without data before the "no signal" alert |
+| `RULE_TIME_SCALE` | `1` | Multiplies the minimum duration of each rule (`0.1` = 10 times faster) |
+| `BASELINE_SAMPLES` | `30` | Resting readings used to compute the personal pulse baseline |
+| `SIM_ENABLED` | `true` | Allows launching scenarios from the app |
+| `CORS_ORIGIN` | `*` | Must include the domain where the app is published |
 
-- **Usuarios del broker** (los crea `docker compose` al arrancar con las claves del `.env` de la raíz): `server`, `node-01` (la pulsera) y `test-01` (pulsera de prueba de `npm run sim -- --mqtt`).
-- **Permisos** (`mosquitto/acl`): cada pulsera usa su deviceId como usuario y solo puede publicar en su propio topic. El servidor además comprueba que el deviceId del topic sea el mismo del JSON.
-- **Last Will**: si la pulsera se apaga o pierde la red, el broker publica `offline` y la app muestra "sin señal" en unos 7 s, sin esperar el temporizador de 10 s.
-- **HTTP sigue como respaldo**: `POST /api/telemetria` con `x-api-key` acepta exactamente el mismo JSON.
-- El **simulador de la app** (`POST /api/sim/...`) no pasa por el broker: entra directo al mismo flujo (base de datos, reglas, alertas, Tierra), así la demo con simulador funciona aunque Mosquitto falle.
+Broker users and passwords live in the root `.env` (`MQTT_SERVER_PASS`, `MQTT_DEVICE_USER`, `MQTT_DEVICE_PASS`, `MQTT_TEST_PASS`); see `.env.example`.
 
-## Contrato de telemetría v1 (congelado)
+## MQTT topics
 
-Definido en [`packages/shared/src/index.ts`](packages/shared/src/index.ts). Es el mismo por MQTT y por HTTP.
+| Topic | Published by | Content |
+| --- | --- | --- |
+| `astro/v1/<deviceId>/telemetry` | Wristband | Contract v1 JSON |
+| `astro/v1/<deviceId>/status` | Wristband (`online`, retained) and the broker's Last Will (`offline`) | text |
+| `astro/v1/<deviceId>/errors` | Server, when it rejects a packet | `{ "error", "issues" }` |
+| `astro/v1/config` | Server, retained | same as `GET /api/config` |
+
+Each wristband uses its deviceId as broker user and may only publish to its own topics (`mosquitto/acl`). If it loses power or network, the Last Will marks it offline in about 7 s. The in-app simulator does not go through the broker, so the simulated demo works even if Mosquitto fails.
+
+## API
+
+| Method | Route | Description |
+| --- | --- | --- |
+| `POST` | `/api/telemetria` | HTTP fallback for one reading, same JSON as MQTT. `x-api-key` header. |
+| `POST` | `/api/telemetria/lote` | `{ "packets": [...] }`, 1 to 50 stored readings. Saved without raising old alerts. |
+| `GET` | `/api/config` | Current thresholds and rules. |
+| `GET` | `/api/health` | Server, database and broker status. |
+| `GET` | `/api/lecturas?deviceId=&minutes=` | Recent readings. |
+| `GET` | `/api/alertas?active=1` | Alerts (active or recent). |
+| `POST` | `/api/alertas/:id/ack` | Acknowledge an alert. |
+| `POST` | `/api/alertas/:id/escalate` | "Call the crew": escalates an impact without waiting 30 s. |
+| `POST` / `GET` | `/api/sintomas` | Symptom log. |
+| `POST` | `/api/sim/:scenario` | Starts a simulated scenario. It goes through the same rule engine. |
+| `POST` | `/api/sim/stop` | Stops the simulation. |
+| `GET` | `/api/sim` | Simulator status and available scenarios. |
+
+Socket.IO: namespace `/ship` in real time and `/ground` with a delay, where each event arrives wrapped with `originalAt` and `deliveredAt`. Events: `snapshot`, `telemetry`, `alert`, `alert:resolved`, `alert:ack`, `node:status`, `symptom`.
+
+## Telemetry contract v1 (frozen)
+
+Defined in [`packages/shared/src/index.ts`](packages/shared/src/index.ts). The wristband (over MQTT or HTTP) and the simulator send exactly the same shape:
 
 ```json
 {
@@ -88,132 +149,37 @@ Definido en [`packages/shared/src/index.ts`](packages/shared/src/index.ts). Es e
 }
 ```
 
-| Campo | Valores |
-| --- | --- |
-| `vitals.quality` | `ok`, `noisy`, `no_finger`, `no_sensor` |
-| `motion.sensor` | `mpu6050`, `bmi160`, `none` |
-| `motion.activity` | `rest`, `light`, `active` o `null` |
-| `env.coState` | `warming`, `heating`, `ready`, `no_sensor` |
-| `localAlert.level` | `none`, `warning`, `danger` (lo que decidió el buzzer) |
-| `localAlert.rules` | `CO_HIGH`, `SPO2_LOW`, `PRESSURE_LOW`, `IMPACT`, ... |
+- A missing sensor or invalid reading is `null`, never `0` or `-1`, and every reading carries its quality (`quality` and `coState` can also be `no_sensor`). The app never shows a doubtful number as reliable.
+- Every key is always present and extra keys are rejected, with the exact reason.
+- `bootId` is random on every ESP32 boot, so readings do not collide when `seq` restarts at 0. A resend with the same `(deviceId, bootId, seq)` is ignored.
+- `ts` is `null` if the ESP32 has not synced NTP. The server rebuilds the time from `bootMs`.
+- `localAlert` is what the wristband decided on its own (buzzer and OLED), without the network.
+- `coPpm` holds the relative CO index (0 to 40), not real ppm.
 
-- **Sensor ausente o lectura inválida = `null`**, nunca `0` ni `-1` (un `bpm: 0` dispararía una alerta falsa).
-- Todas las claves viajan siempre y no se aceptan claves extra: un campo mal escrito se rechaza con el motivo exacto.
-- `bootId` debe ser **distinto en cada arranque** (`esp_random() & 0x7FFFFFFF`). Con `seq` forma la clave única: si fuera fijo, tras un reinicio las lecturas nuevas se descartarían como duplicadas.
-- `ts` es `null` si el ESP32 no tiene hora NTP (en la red de la Nave no hay internet). El servidor la reconstruye con `bootMs`.
-- **CO de la pulsera real**: escala de demo 0–40 calibrada contra el aire de la sala (0 = aire de la sala, 9 = alerta, 35 = crítico). La app lo muestra como "CO index", no como ppm. El simulador usa la misma escala.
+## Hardware
 
-## API
+ESP32 DevKit V1, MAX30100 (pulse and SpO2), MPU6050 (motion and impacts), AHT20 + BMP280 (temperature, humidity, pressure), MQ-7 (carbon monoxide), SSD1306 OLED and an active buzzer. Diagrams in [`docs/hardware`](docs/hardware).
 
-| Método | Ruta | Descripción |
-| --- | --- | --- |
-| `POST` | `/api/telemetria` | Respaldo HTTP de la pulsera. Header `x-api-key`. Responde `{ ok, accepted, duplicates, configVersion }`, `400 { error: "validation", issues }` o `401`. |
-| `POST` | `/api/telemetria/lote` | `{ "packets": [...] }`, de 1 a 50 lecturas guardadas en flash. Se almacenan sin disparar alertas viejas. |
-| `GET` | `/api/config` | Umbrales, escala de CO y reglas vigentes. |
-| `GET` | `/api/health` | Estado del servidor, la base de datos y el broker (`mqtt.connected`, `received`, `rejected`, `lastError`). |
-| `GET` | `/api/lecturas?deviceId=&minutes=` | Historial reciente. |
-| `GET` | `/api/alertas?active=1` | Alertas (activas o recientes). |
-| `POST` | `/api/alertas/:id/ack` | Reconocer una alerta. |
-| `POST` | `/api/alertas/:id/escalate` | "Call the crew": escala un impacto a peligro sin esperar los 30 s. |
-| `POST` / `GET` | `/api/sintomas` | Registro manual de síntomas. |
-| `POST` | `/api/sim/:escenario` | Lanza un escenario simulado desde la app. Mismo flujo que la pulsera. Body opcional: `deviceId`, `warmupSec` (0), `rampSec` (20). |
-| `POST` | `/api/sim/stop` | Detiene la simulación. |
-| `GET` | `/api/sim` | Estado del simulador y escenarios disponibles. |
-
-Socket.IO: namespace `/ship` en tiempo real y `/ground` con retraso (cada evento llega envuelto con `originalAt` y `deliveredAt`). Eventos: `snapshot`, `telemetry`, `alert`, `alert:resolved`, `alert:ack`, `node:status`, `symptom`.
-
-## Simulador
-
-Escenarios: `normal`, `exercise`, `stress`, `co`, `hypoxia`, `depressurization`, `impact`, `offline`. Con `SIM_ENABLED=false` se desactiva el simulador de la app.
-
-```powershell
-npm run sim -- --scenario co --mqtt          # pulsera de prueba test-01, por el broker (sale en "Live wristband")
-npm run sim -- --scenario hypoxia            # nodo simulado sim-01 por HTTP (sale en "Simulation")
-npm run sim -- --scenario offline --mqtt     # deja de enviar: prueba el Last Will y "sin señal"
-```
-
-Envía datos normales durante `--warmup` segundos (10 por defecto) y después aplica el escenario. Otras opciones: `--url`, `--broker`, `--key`, `--device`, `--interval`, `--ramp`.
-
-Para la demo de estrés, primero corre `normal` durante 1 minuto: el servidor calcula el pulso base personal con esas lecturas, y si el primer escenario ya es de estrés, la base sale alta y la regla no dispara.
-
-## La app (Mission View)
-
-El cuerpo 3D de partículas viene de [mission-view](https://github.com/antonyto02/mission-view) y se adaptó a este backend: cada zona del cuerpo tiene un panel (Mind, Blood oxygen, Cabin air, Heart, Body) unido por una línea, y el color lo deciden las alertas del servidor. Las pantallas siguen el diseño de UI/UX:
-
-| Pantalla | Cuándo aparece |
-| --- | --- |
-| Preflight (revisando / listo) | Al abrir la app. Revisa el enlace con la Nave y que cada sensor esté leyendo. `Start mission` se habilita cuando todo está en verde. |
-| Astronauta: nominal | Todo bien. |
-| Astronauta: peligro | Alerta crítica, por ejemplo fuga de CO: aviso central, panel en rojo con qué pasó y qué hacer, botón `Acknowledge`. |
-| Astronauta: impacto | "Are you OK?" con cuenta de 30 s. Sin respuesta (o con `Call the crew`) escala a peligro. |
-| Astronauta: síntomas | Botón `How do you feel?`. El astronauta decide si lo comparte con Tierra. |
-| Astronauta: sin señal | 10 s sin paquetes de la pulsera, o sin conexión con el servidor. |
-| Tierra | `#ground`. Los mismos datos con retraso, bitácora con hora de envío y de llegada, y exportar reporte. |
-
-En el preflight se elige la fuente: **Live wristband** (la pulsera real) o **Simulation** (el nodo simulado `sim-01` del servidor). Durante la misión, el enlace `Simulator` del pie (o la tecla `S`) muestra la barra de escenarios; las teclas `1` a `8` los lanzan y `← Live wristband` regresa a la pulsera.
-
-**Modo demo sin servidor.** Si la app no encuentra el servidor (o se abre con `?demo`), corre sola: el simulador y el motor de reglas de `packages/shared` se ejecutan en el navegador, así que las alertas son las mismas. Sirve para publicar solo `apps/web` (por ejemplo en Vercel, con `VITE_STANDALONE=1`) y enseñarla sin laptop-Nave. Opciones: `?delay=15` (retraso de Tierra en segundos) y `?scale=1` (velocidad de las reglas; por defecto 0.1).
-
-Otros parámetros: `?api=http://192.168.137.1:3000` apunta la app a otra Nave (también se puede escribir en el preflight). El nombre del producto está en `apps/web/src/config.ts`, y los textos cortos de cada alerta en `apps/web/src/model/copy.ts`: si backend agrega una regla, ahí se le pone su zona del cuerpo y su frase.
-
-## Modo Nave completo (demo)
-
-```powershell
-docker compose up -d --build     # db + mosquitto + servidor
-npm run dev:web
-```
-
-Para acelerar las reglas en la demo, en el `.env` de la raíz: `RULE_TIME_SCALE=0.1` y `GROUND_DELAY_SEC=60`, y luego `docker compose up -d --build`.
-
-## Variables de entorno
-
-Servidor (`apps/server/.env`; en Docker las toma de `docker-compose.yml` y del `.env` de la raíz):
-
-| Variable | Default | Para qué |
-| --- | --- | --- |
-| `DATABASE_URL` | — | `postgresql://astro:astro@127.0.0.1:55432/astro` fuera de Docker |
-| `MQTT_ENABLED` | `true` | `false` = solo HTTP |
-| `MQTT_URL` | `mqtt://127.0.0.1:1883` | Broker (`127.0.0.1` y no `localhost`: en Windows `localhost` va primero a IPv6) |
-| `MQTT_USER` / `MQTT_PASS` | `server` / `clave-server` | Debe coincidir con `MQTT_SERVER_PASS` del `.env` de la raíz |
-| `DEVICE_API_KEYS` | `dev-key` | API keys del respaldo HTTP (`x-api-key`), separadas por comas |
-| `GROUND_DELAY_SEC` | `60` | Retraso de la vista Tierra |
-| `OFFLINE_AFTER_SEC` | `10` | Segundos sin datos antes de "sin señal" |
-| `RULE_TIME_SCALE` | `1` | Multiplica la duración mínima de las reglas (`0.1` = 10 veces más rápido) |
-| `BASELINE_SAMPLES` | `30` | Lecturas en reposo para calcular el pulso base |
-| `SIM_ENABLED` | `true` | Permite lanzar escenarios desde la app |
-
-Broker (`.env` de la raíz): `MQTT_SERVER_PASS`, `MQTT_DEVICE_USER` (`node-01`), `MQTT_DEVICE_PASS`, `MQTT_TEST_PASS`. Si cambias una clave: `docker compose up -d --force-recreate mosquitto`.
-
-## Firmware
-
-```powershell
+```bash
 cd firmware
-copy include\config.example.h include\config.h   # Wi-Fi 2.4 GHz, IP de la laptop, clave MQTT
-pio run -t upload; pio device monitor
+cp include/config.example.h include/config.h   # Wi-Fi, broker address, MQTT password
+pio run -t upload && pio device monitor
 ```
 
-`readSensors()` trae valores fijos; ahí se integran los sensores reales. Al arrancar imprime `[boot] deviceId=... bootId=...` y `[mqtt] conectando... OK`.
+The firmware in this repository covers Wi-Fi, NTP and publishing the contract over MQTT; sensor readings are integrated in `readSensors()`.
 
-## Pruebas
+## Tests
 
-```powershell
-npm test     # contrato, topics, alerta local y los 8 escenarios por el motor de reglas
+```bash
+npm test     # contract, topics, local alert and the 8 scenarios through the rule engine
 ```
 
-## Problemas comunes
+## Limitations
 
-| Síntoma | Causa | Solución |
-| --- | --- | --- |
-| `port is already allocated` en 1883 | Otro Mosquitto (por ejemplo el de la app de prueba `telemetria-mqtt`) | `docker ps`, luego `docker stop <nombre>` |
-| `ECONNREFUSED 127.0.0.1:1883` en el servidor | El broker no está corriendo | `docker compose up -d mosquitto` y `docker compose logs mosquitto` |
-| `el broker rechazó usuario/clave` | `MQTT_PASS` del servidor ≠ `MQTT_SERVER_PASS` de la raíz | Igualarlas y `docker compose up -d --force-recreate mosquitto` |
-| ESP32 `estado=-2` | No llega al broker | Misma Wi-Fi 2.4 GHz, IP correcta, regla de firewall 1883 |
-| ESP32 `estado=4` o `5` | Usuario o clave del broker | `DEVICE_ID` = `MQTT_DEVICE_USER`, `MQTT_PASS` = `MQTT_DEVICE_PASS` |
-| ESP32 imprime `RECHAZADO por el servidor` | El JSON no cumple el contrato | El mensaje dice qué campo |
-| La app abre en modo demo sin servidor | No encontró `http://<host>:3000` | Revisa `npm run dev:server`; si cambiaste `PORT`, abre la app con `?api=http://localhost:<puerto>` |
-| `npm run dev:web` abre en 5174 | Otro proyecto usa el 5173 | Normal, usa el puerto que imprime |
-
-## Flujo de trabajo
-
-- `main` siempre funciona. Cada quien trabaja en su rama (`back/...`, `device/...`, `web/...`) y abre un PR.
-- Un cambio al contrato en `packages/shared` se acuerda entre backend y conexión del dispositivo antes de subirlo, y sube `v`.
+- It does not diagnose. It detects signals and suggests general actions.
+- Thresholds come from public references and were not reviewed by a clinician.
+- "Stress" is inferred from pulse and motion; caffeine, fever or poor sleep look the same.
+- Critical scenarios (CO leak, depressurization, hypoxia) can only be simulated.
+- It covers cardiovascular signals, cabin air and self-reported symptoms. It does not measure radiation, bone loss or immune changes.
+- The link to Earth is a configurable delay on one server, not a real space link.
+- Authentication is an API key for the device only; a real medical system needs encryption and role-based access.

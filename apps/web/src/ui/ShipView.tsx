@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { SCENARIOS } from "@astro/shared";
+import { DEMO_MISSION, missionElapsed } from "@/config";
 import { pickDevice, useMission, useNow } from "@/data/mission";
 import { evaluate } from "@/model/evaluate";
 import type { ZoneId } from "@/model/types";
 import { Scene } from "@/scene/Scene";
 import { BannerBox, Header } from "./Frame";
 import { ImpactDialog } from "./ImpactDialog";
+import { Narrator } from "./Narrator";
 import { SimBar } from "./SimBar";
 import { SymptomDrawer } from "./SymptomDrawer";
+import { SHIP_TOUR, Tour, useFirstTour } from "./Tour";
 import { Leaders, ZonePanel } from "./ZonePanel";
 import { ago, clock } from "./format";
 import { useHudScale } from "./useHudScale";
@@ -33,8 +36,9 @@ export function ShipView() {
   const showSim = m.source === "sim" || simBar;
   const offline = evaluation.overall === "offline";
   const lastAgo = dev.arrival ? now - dev.arrival.deliveredAt : null;
+  const tour = useFirstTour(m.source === "sim" && !!dev.deviceId);
 
-  // Atajos para quien presenta: 1–8 escenarios · S barra del simulador · Esc cierra síntomas
+  // Atajos para quien presenta: 1–8 escenarios · S barra de escenarios · Esc cierra síntomas
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -52,24 +56,31 @@ export function ShipView() {
   const banner = evaluation.banner;
   const impactOpen = !!evaluation.impact;
   const offlineSecs = offline && dev.node && !dev.node.online ? ` Nothing received for ${ago(now - dev.node.lastSeen)}.` : "";
+  const delay = m.ground.groundDelaySec;
 
-  const meta = !m.ship.connected
-    ? `No link to ${m.backend?.label ?? "the ship server"}`
+  // Derecha del encabezado: a quién se monitorea y el contexto de misión (ficticio con datos simulados).
+  const who = !m.ship.connected
+    ? "No link to the server"
     : !dev.deviceId
       ? m.source === "sim"
-        ? "Starting the simulator…"
-        : "Live · waiting for the wristband"
-      : reading?.source === "sim"
-        ? `Simulated data · ${m.backend?.kind === "remote" ? `POST /api/sim/${m.scenario ?? "normal"}` : "built-in simulator"}`
-        : `Live · ${dev.deviceId} · last packet ${ago(lastAgo ?? 0)} ago`;
+        ? "Starting the simulated wristband…"
+        : "Waiting for the wristband"
+      : simulated
+        ? `Crew member ${DEMO_MISSION.crew} · fictional mission`
+        : `Crew member · ${dev.deviceId}`;
+  const detail = !dev.deviceId
+    ? m.backend?.label ?? ""
+    : simulated
+      ? `MET ${missionElapsed(now)} · Earth delay ${delay ?? "…"} s`
+      : `Live wristband · last packet ${ago(lastAgo ?? 0)} ago`;
 
   const footLeft = !dev.deviceId
     ? "No wristband yet"
     : offline && dev.node && !dev.node.online
-      ? `${simulated ? "Simulator" : "Wristband"} offline since ${clock(dev.node.lastSeen)}`
+      ? `${simulated ? "Simulated wristband" : "Wristband"} silent since ${clock(dev.node.lastSeen)}`
       : simulated
-        ? `Simulator · ${dev.deviceId}`
-        : `Wristband online · seq ${reading?.seq ?? 0}`;
+        ? "Simulated wristband"
+        : `Live wristband · ${dev.deviceId}`;
 
   return (
     <div className={`app aud-ship ${hud.mobile ? "mobile" : ""}`}>
@@ -79,7 +90,7 @@ export function ShipView() {
       <Leaders zones={symptoms ? LEFT : [...LEFT, ...RIGHT]} evaluation={evaluation} />
 
       <div className="hud" style={hud.style}>
-        <Header level={evaluation.overall} view="ship" simulated={simulated && !!dev.deviceId} meta={meta} />
+        <Header level={evaluation.overall} view="ship" simulated={simulated && !!dev.deviceId} who={who} detail={detail} />
         {hud.mobile && <div className="spacer" />}
 
         {banner && !impactOpen && (
@@ -94,13 +105,13 @@ export function ShipView() {
           />
         )}
 
-        <div className="col left">
+        <div className="col left" data-tour="panels-left">
           {LEFT.map((z) => (
-            <ZonePanel key={z} zone={z} evaluation={evaluation} onAck={m.ack} />
+            <ZonePanel key={z} zone={z} evaluation={evaluation} onAck={m.ack} onFeel={() => setSymptoms(true)} />
           ))}
         </div>
         {!symptoms && (
-          <div className="col right">
+          <div className="col right" data-tour="panels-right">
             {RIGHT.map((z) => (
               <ZonePanel key={z} zone={z} evaluation={evaluation} onAck={m.ack} />
             ))}
@@ -108,16 +119,20 @@ export function ShipView() {
         )}
         {symptoms && <SymptomDrawer deviceId={dev.deviceId} onClose={() => setSymptoms(false)} onSubmit={m.logSymptom} />}
 
+        {simulated && m.source === "sim" && m.scenario && !impactOpen && !symptoms && (
+          <Narrator scenario={m.scenario} onTour={tour.show} />
+        )}
+
         <footer className="bar bottom">
           <div className={`foot-left ${offline ? "lvl-offline" : ""}`}>
             <span className="dot" aria-hidden />
             <span>{footLeft}</span>
-            <button type="button" className="link" onClick={m.backToPreflight}>
-              Preflight
+            <button type="button" className="link" data-tour="sensor-check" onClick={m.backToPreflight} title="Back to the sensor check before the mission">
+              Sensor check
             </button>
             {!showSim && (
-              <button type="button" className="link" onClick={() => setSimBar(true)} title="Key S">
-                Simulator
+              <button type="button" className="link" onClick={() => setSimBar(true)} title="Show the scenario buttons (key S)">
+                Scenarios
               </button>
             )}
           </div>
@@ -132,18 +147,25 @@ export function ShipView() {
           )}
           <div className="foot-right">
             {showSim && m.status === "remote" && (
-              <button type="button" className="link" onClick={() => (m.setSource("live"), setSimBar(false))}>
-                ← Live wristband
+              <button
+                type="button"
+                className="link"
+                title="Stop the simulation and follow the real wristband"
+                onClick={() => (m.setSource("live"), setSimBar(false))}
+              >
+                Use real wristband
               </button>
             )}
             {!symptoms && (
-              <button type="button" className="btn primary" onClick={() => setSymptoms(true)}>
+              <button type="button" className="btn primary" data-tour="feel" onClick={() => setSymptoms(true)}>
                 How do you feel?
               </button>
             )}
           </div>
         </footer>
       </div>
+
+      {tour.open && <Tour steps={SHIP_TOUR} onClose={tour.close} />}
     </div>
   );
 }

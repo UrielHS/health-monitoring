@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import { APP_NAME, APP_TAGLINE } from "@/config";
 import { pickDevice, useMission, useNow } from "@/data/mission";
 import { preflightEvaluation, sensorChecks, type SensorStatus } from "@/model/evaluate";
 import { Scene } from "@/scene/Scene";
+import { Brand } from "./Brand";
 import { ago } from "./format";
 import { useHudScale } from "./useHudScale";
 
@@ -98,12 +98,13 @@ export function Preflight() {
     <div className={`app aud-ship ${hud.mobile ? "mobile" : ""}`}>
       <div className="hud" style={hud.style}>
         <header className="bar top">
-          <p className="brand">
-            {APP_NAME} <span>· {APP_TAGLINE}</span>
-          </p>
+          <Brand />
           <nav className="tabs" aria-label="Views">
             <a href="#ground" className="tab">
               Ground medical
+            </a>
+            <a href="#guide" className="tab">
+              Guide
             </a>
           </nav>
           <p className="meta">Preflight · prototype, not a medical device</p>
@@ -148,6 +149,27 @@ export function Preflight() {
             ))}
           </ul>
         </section>
+
+        {!ready && (
+          <section className="explore" aria-labelledby="explore-title">
+            <div>
+              <p className="eyebrow">No wristband at hand?</p>
+              <h2 id="explore-title">Explore AURA with simulated data</h2>
+              <p>
+                A fictional crew member on a long mission. Launch a CO leak, a depressurization or an impact and watch what
+                the astronaut and the ground team see. Everything simulated is labeled SIMULATED.
+              </p>
+            </div>
+            <div className="explore-actions">
+              <button type="button" className="btn go" onClick={m.exploreSim}>
+                Explore with simulated data →
+              </button>
+              <a className="link" href="#guide">
+                Read the user guide first
+              </a>
+            </div>
+          </section>
+        )}
 
         <div className="pre-body" style={{ opacity: ready ? 1 : fresh ? 0.75 : 0.45 }}>
           <Scene evaluation={evaluation} bpm={ready ? (reading?.vitals.bpm ?? null) : null} />
