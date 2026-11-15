@@ -10,12 +10,23 @@ export type LogItem = {
   level: LogLevel;
   title: string;
   detail?: string;
+  /** Regla que la originó, cuando el evento es una alerta. */
+  ruleId?: string;
   deviceId: string;
   originalAt: number;
   deliveredAt: number;
 };
 
 export type Arrival = { reading: Reading } & Timing;
+
+/** Un punto de las gráficas de tendencia. null = sin dato confiable en ese momento (hueco en la línea). */
+export type TrendPoint = { t: number; bpm: number | null; spo2: number | null; co: number | null };
+const TREND_MAX = 450; // ~15 min a un paquete cada 2 s
+
+const toPoint = (r: Reading): TrendPoint => {
+  const ok = r.vitals.quality === "ok";
+  return { t: r.ts, bpm: ok ? r.vitals.bpm : null, spo2: ok ? r.vitals.spo2 : null, co: r.env.coState === "ready" ? r.env.coPpm : null };
+};
 
 export type MirrorState = {
   connected: boolean;
@@ -26,9 +37,11 @@ export type MirrorState = {
   /** Alertas activas. */
   alerts: SeenAlert[];
   log: LogItem[];
+  /** Historia reciente por dispositivo, para las gráficas. */
+  trend: Record<string, TrendPoint[]>;
 };
 
-const EMPTY: MirrorState = { connected: false, groundDelaySec: null, readings: {}, nodes: {}, alerts: [], log: [] };
+const EMPTY: MirrorState = { connected: false, groundDelaySec: null, readings: {}, nodes: {}, alerts: [], log: [], trend: {} };
 const LOG_MAX = 200;
 
 const logLevel = (a: Alert): LogLevel => (a.level === "critical" ? "danger" : a.level === "warning" ? "caution" : "info");
@@ -36,7 +49,7 @@ const logLevel = (a: Alert): LogLevel => (a.level === "critical" ? "danger" : a.
 const alertDetail = (a: Alert): string | undefined => {
   const v = a.values as Record<string, unknown>;
   const n = (k: string) => (typeof v[k] === "number" ? (v[k] as number) : null);
-  if (a.ruleId.startsWith("co") && n("coPpm") != null) return `CO ${n("coPpm")!.toFixed(0)} · astronaut alerted on board`;
+  if (a.ruleId.startsWith("co") && n("coPpm") != null) return `CO index ${n("coPpm")!.toFixed(0)} · astronaut alerted on board`;
   if (a.ruleId.startsWith("spo2") && n("spo2") != null) return `SpO₂ ${n("spo2")}% · astronaut alerted on board`;
   if ((a.ruleId.startsWith("hr") || a.ruleId === "acute_stress") && n("bpm") != null) return `Pulse ${n("bpm")} BPM · astronaut alerted on board`;
   if (a.ruleId.startsWith("pressure") && n("pressureKpa") != null) return `${n("pressureKpa")!.toFixed(1)} kPa · astronaut alerted on board`;
@@ -96,7 +109,10 @@ export class Mirror implements Listener {
     switch (e.type) {
       case "telemetry": {
         const r = e.payload;
-        const patch: Partial<MirrorState> = { readings: { ...st.readings, [r.deviceId]: { reading: r, ...t } } };
+        const patch: Partial<MirrorState> = {
+          readings: { ...st.readings, [r.deviceId]: { reading: r, ...t } },
+          trend: { ...st.trend, [r.deviceId]: [...(st.trend[r.deviceId] ?? []), toPoint(r)].slice(-TREND_MAX) },
+        };
         // Ejercicio: pulso alto con movimiento. No es alerta, pero queda en la bitácora.
         const moving = r.motion.activity === "active" && r.vitals.quality === "ok" && (r.vitals.bpm ?? 0) > 100;
         if (moving && !this.exercising.has(r.deviceId)) {
@@ -119,7 +135,7 @@ export class Mirror implements Listener {
         const a = e.payload;
         this.set({
           alerts: [{ ...a, seenAt: t.deliveredAt }, ...st.alerts.filter((x) => x.id !== a.id)],
-          log: this.addLog([{ key: `alert:${a.id}`, level: logLevel(a), title: a.title, detail: alertDetail(a), deviceId: a.deviceId, ...t }]),
+          log: this.addLog([{ key: `alert:${a.id}`, ruleId: a.ruleId, level: logLevel(a), title: a.title, detail: alertDetail(a), deviceId: a.deviceId, ...t }]),
         });
         break;
       }
@@ -172,6 +188,26 @@ export class Mirror implements Listener {
     }
   }
 
+  /**
+   * Historia para las gráficas. Con retraso (Tierra) solo entra lo que ya habría llegado; si esta
+   * pantalla aún no tiene lectura, la más reciente de esa historia pasa a ser la actual.
+   */
+  seedReadings(history: Reading[], delaySec: number) {
+    if (!history.length) return;
+    const now = Date.now();
+    const d = delaySec * 1000;
+    const deviceId = history[0].deviceId;
+    const have = this.state.trend[deviceId] ?? [];
+    const before = have.length ? have[0].t : Infinity;
+    const old = history.filter((r) => r.ts + d <= now && r.ts < before);
+    if (!old.length) return;
+    const patch: Partial<MirrorState> = { trend: { ...this.state.trend, [deviceId]: [...old.map(toPoint), ...have].slice(-TREND_MAX) } };
+    const last = old[old.length - 1];
+    if (!this.state.readings[deviceId] && now - (last.ts + d) < 30_000)
+      patch.readings = { ...this.state.readings, [deviceId]: { reading: last, originalAt: last.ts, deliveredAt: last.ts + d } };
+    this.set(patch);
+  }
+
   /** Tierra: lo que ya habría llegado si esta pantalla hubiera estado abierta. */
   seed(history: { alerts: Alert[]; symptoms: SymptomRow[] }, delaySec: number) {
     const now = Date.now();
@@ -182,7 +218,7 @@ export class Mirror implements Listener {
     const active: SeenAlert[] = [];
     for (const a of history.alerts) {
       if (!arrived(a.startedAt)) continue;
-      items.push({ key: `alert:${a.id}`, level: logLevel(a), title: a.title, detail: alertDetail(a), deviceId: a.deviceId, ...time(a.startedAt) });
+      items.push({ key: `alert:${a.id}`, ruleId: a.ruleId, level: logLevel(a), title: a.title, detail: alertDetail(a), deviceId: a.deviceId, ...time(a.startedAt) });
       if (arrived(a.ackAt))
         items.push({ key: `ack:${a.id}`, level: "ok", title: "Alert acknowledged by astronaut", detail: a.title, deviceId: a.deviceId, ...time(a.ackAt) });
       if (arrived(a.endedAt)) {

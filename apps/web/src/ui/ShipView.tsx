@@ -96,7 +96,7 @@ export function ShipView() {
 
         <div className="col left">
           {LEFT.map((z) => (
-            <ZonePanel key={z} zone={z} evaluation={evaluation} onAck={m.ack} />
+            <ZonePanel key={z} zone={z} evaluation={evaluation} onAck={m.ack} onFeel={() => setSymptoms(true)} />
           ))}
         </div>
         {!symptoms && (

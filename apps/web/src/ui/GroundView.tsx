@@ -6,11 +6,13 @@ import { evaluate } from "@/model/evaluate";
 import type { ZoneId } from "@/model/types";
 import { Scene } from "@/scene/Scene";
 import { BannerBox, Header } from "./Frame";
+import { TrendChart, type TrendMark } from "./TrendChart";
 import { Leaders, ZonePanel } from "./ZonePanel";
 import { ago, clock } from "./format";
 import { useHudScale } from "./useHudScale";
 
 const LEFT: ZoneId[] = ["head", "lungs", "cabin"];
+const TREND_WINDOW_MS = 5 * 60_000;
 
 /** Vista del médico en Tierra (#ground): lo mismo que vio la tripulación, pero tarde (RF-30). */
 export function GroundView() {
@@ -28,6 +30,31 @@ export function GroundView() {
   const lag = dev.arrival ? Math.round((dev.arrival.deliveredAt - dev.arrival.originalAt) / 1000) : null;
   const stale = dev.arrival ? now - dev.arrival.deliveredAt : 0;
   const log = dev.deviceId ? m.ground.log.filter((l) => l.deviceId === dev.deviceId) : m.ground.log;
+  // Gráficas: los últimos 5 min tal como llegaron a Tierra, con las alertas marcadas.
+  const trendId = dev.deviceId ?? Object.keys(m.ground.trend)[0] ?? null;
+  const trend = (trendId && m.ground.trend[trendId]) || [];
+  const tEnd = trend.length ? trend[trend.length - 1].t : now - (delay ?? 0) * 1000;
+  const span: [number, number] = [tEnd - TREND_WINDOW_MS, tEnd];
+  // Cada gráfica marca solo las alertas de su medida.
+  const marks = useMemo(() => {
+    const of = (test: (ruleId: string) => boolean): TrendMark[] =>
+      log
+        .filter((l) => l.ruleId && test(l.ruleId) && (l.level === "danger" || l.level === "caution"))
+        .map((l) => ({ t: l.originalAt, level: l.level as "danger" | "caution", title: `${clock(l.originalAt)} · ${l.title}` }));
+    return {
+      bpm: of((r) => r.startsWith("hr_") || r === "acute_stress"),
+      spo2: of((r) => r.startsWith("spo2") || r === "pressure_spo2"),
+      co: of((r) => r.startsWith("co_")),
+    };
+  }, [log]);
+  const series = useMemo(
+    () => ({
+      bpm: trend.map((p) => ({ t: p.t, v: p.bpm })),
+      spo2: trend.map((p) => ({ t: p.t, v: p.spo2 })),
+      co: trend.map((p) => ({ t: p.t, v: p.co })),
+    }),
+    [trend],
+  );
   const heart = evaluation.zones.heart;
   const body = evaluation.zones.body;
 
@@ -77,8 +104,14 @@ export function GroundView() {
         )}
 
         <section className="side log" aria-labelledby="log-title">
-          <p className="eyebrow">Event log · {dev.deviceId ?? "no device"}</p>
           <h2 id="log-title">What the crew saw</h2>
+          <div className="trends">
+            <p className="eyebrow">Trends · last 5 min received</p>
+            <TrendChart label="Pulse" unit="BPM" points={series.bpm} window={span} domain={[50, 140]} threshold={130} marks={marks.bpm} />
+            <TrendChart label="Blood oxygen" unit="%" points={series.spo2} window={span} domain={[88, 100]} threshold={90} marks={marks.spo2} />
+            <TrendChart label="CO index (relative)" unit="of 40" points={series.co} window={span} domain={[0, 40]} threshold={35} marks={marks.co} digits={1} showTime />
+          </div>
+          <p className="eyebrow">Event log · {dev.deviceId ?? "no device"}</p>
           <p className="hint">Each event shows when it happened on board and when it reached Earth.</p>
           <ul className="log-list">
             {log.length === 0 && (

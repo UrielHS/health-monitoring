@@ -34,6 +34,7 @@ export class LocalBackend implements Backend {
   private alerts = new Map<number, Alert>();
   private open = new Map<string, number>();
   private symptoms: SymptomRow[] = [];
+  private history: Reading[] = [];
   private nextId = 1;
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private watchdog = setInterval(() => this.watch(), 1000);
@@ -88,6 +89,8 @@ export class LocalBackend implements Backend {
     const now = Date.now();
     const r: Reading = { ...t, ts: t.ts ?? now, receivedAt: now };
     this.lastReading.set(r.deviceId, r);
+    this.history.push(r);
+    if (this.history.length > 900) this.history.splice(0, 300);
     this.markSeen(r.deviceId, now);
     this.emit({ type: "telemetry", payload: r });
 
@@ -219,7 +222,12 @@ export class LocalBackend implements Backend {
   }
 
   async groundHistory() {
-    return { alerts: [], symptoms: [] };
+    return { alerts: [...this.alerts.values()], symptoms: this.symptoms.filter((s) => s.shareWithGround) };
+  }
+
+  async readings(deviceId: string, minutes: number) {
+    const since = Date.now() - minutes * 60_000;
+    return this.history.filter((r) => r.deviceId === deviceId && r.ts >= since);
   }
 
   dispose() {

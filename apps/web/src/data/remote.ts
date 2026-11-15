@@ -1,5 +1,5 @@
 import { io, type Socket } from "socket.io-client";
-import { EVENTS, type Alert, type GroundEnvelope, type Scenario } from "@astro/shared";
+import { EVENTS, type Alert, type GroundEnvelope, type Reading, type Scenario } from "@astro/shared";
 import type { Backend, Health, Listener, MissionEvent, SimStatus, Snapshot, SymptomInput, SymptomRow } from "./backend";
 
 const EVENT_NAMES = Object.values(EVENTS) as MissionEvent["type"][];
@@ -21,6 +21,24 @@ const post = (body?: unknown): RequestInit => ({
   headers: { "content-type": "application/json" },
   body: body === undefined ? undefined : JSON.stringify(body),
 });
+
+/** Fila de GET /api/lecturas (columnas planas de Prisma) → lectura con la forma del contrato. */
+type ReadingRow = {
+  deviceId: string; bootId: number; seq: number; ts: string; receivedAt: string; source: string;
+  bpm: number | null; spo2: number | null; ppgQuality: string; accMag: number; gyroMag: number; activity: string; impact: boolean;
+  tempC: number | null; rh: number | null; pressureKpa: number | null; coPpm: number | null; coState: string; localAlert: string;
+};
+const toReading = (r: ReadingRow): Reading => {
+  const ts = new Date(r.ts).getTime();
+  return {
+    deviceId: r.deviceId, bootId: r.bootId, seq: r.seq, bootMs: 0, ts, receivedAt: new Date(r.receivedAt).getTime(),
+    source: r.source as Reading["source"],
+    vitals: { bpm: r.bpm, spo2: r.spo2, quality: r.ppgQuality as Reading["vitals"]["quality"] },
+    motion: { accMag: r.accMag, gyroMag: r.gyroMag, activity: r.activity as Reading["motion"]["activity"], impact: r.impact },
+    env: { tempC: r.tempC, rh: r.rh, pressureKpa: r.pressureKpa, coPpm: r.coPpm, coState: r.coState as Reading["env"]["coState"] },
+    localAlert: r.localAlert as Reading["localAlert"],
+  };
+};
 
 /** ¿Hay un servidor de la Nave en esa URL? Cualquier respuesta HTTP cuenta como "sí". */
 export async function probe(base: string, timeoutMs = 2500): Promise<Health> {
@@ -103,6 +121,11 @@ export class RemoteBackend implements Backend {
     ]);
     // Solo llegan a Tierra los síntomas que el astronauta decidió compartir.
     return { alerts, symptoms: symptoms.filter((s) => s.shareWithGround) };
+  }
+
+  async readings(deviceId: string, minutes: number) {
+    const rows = await json<ReadingRow[]>(`${this.base}/api/lecturas?deviceId=${encodeURIComponent(deviceId)}&minutes=${minutes}`, undefined, 8000);
+    return rows.map(toReading);
   }
 
   dispose() {
