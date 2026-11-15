@@ -1,4 +1,4 @@
-import type { AlertLevel, Reading } from "./index.js";
+import type { AlertLevel, LocalAlertLevel, Reading, Telemetry } from "./index.js";
 
 /**
  * Motor de reglas compartido. Lo usa el servidor (Nave) y también la app cuando corre
@@ -362,6 +362,30 @@ export class RuleEngine {
     const max = Math.max(...st.pressureHistory.map((h) => h.p));
     return Math.max(0, max - r.env.pressureKpa);
   }
+}
+
+const LOCAL_RANK: Record<LocalAlertLevel, number> = { none: 0, warning: 1, danger: 2 };
+
+/**
+ * Lo que decide la pulsera por su cuenta para el buzzer (firmware/src/main.cpp, evaluateLocal),
+ * sin duraciones mínimas. El simulador lo usa para mandar el mismo localAlert que la pulsera real.
+ */
+export function localAlertFor(t: Pick<Telemetry, "vitals" | "motion" | "env">): Telemetry["localAlert"] {
+  const rules: string[] = [];
+  let level: LocalAlertLevel = "none";
+  const raise = (code: string, l: LocalAlertLevel) => {
+    if (!rules.includes(code)) rules.push(code);
+    if (LOCAL_RANK[l] > LOCAL_RANK[level]) level = l;
+  };
+  const { coPpm, coState, pressureKpa } = t.env;
+  if (coState === "ready" && coPpm !== null) {
+    if (coPpm >= T.co.critical) raise("CO_HIGH", "danger");
+    else if (coPpm >= T.co.warning) raise("CO_HIGH", "warning");
+  }
+  if (t.vitals.quality === "ok" && t.vitals.spo2 !== null && t.vitals.spo2 <= T.spo2.critical) raise("SPO2_LOW", "danger");
+  if (pressureKpa !== null && pressureKpa < T.pressure.criticalAbsKpa) raise("PRESSURE_LOW", "danger");
+  if (t.motion.impact) raise("IMPACT", "warning");
+  return { level, rules };
 }
 
 function snapshot(r: Reading, st: DeviceState, pressureDrop: number | null) {

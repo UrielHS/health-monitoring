@@ -18,16 +18,20 @@ model Reading {
   bpm         Float?
   spo2        Float?
   ppgQuality  String
-  accMag      Float
-  gyroMag     Float
-  activity    String
+  motionSensor String  @default("none")
+  accMag      Float?
+  gyroMag     Float?
+  activity    String?
   impact      Boolean
   tempC       Float?
   rh          Float?
   pressureKpa Float?
   coPpm       Float?
   coState     String
+  /// Nivel que decidió la pulsera por su cuenta: none | warning | danger
   localAlert  String
+  /// Códigos de localAlert.rules (CO_HIGH, SPO2_LOW, ...)
+  localRules  String[] @default([])
 
   // Un reenvío desde la cola en flash no duplica datos.
   @@unique([deviceId, bootId, seq])

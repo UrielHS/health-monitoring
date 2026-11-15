@@ -1,5 +1,9 @@
 # Instancia "Nave": todo corre local, sin internet.
-#   docker compose up -d --build
+#   Desarrollo:  docker compose up -d db mosquitto      (y el servidor con npm run dev:server)
+#   Demo:        docker compose up -d --build           (db + mosquitto + servidor)
+# El nombre fijo hace que, sin importar la carpeta, se reutilicen los mismos contenedores y datos.
+name: health-monitoring
+
 services:
   db:
     image: postgres:16-alpine
@@ -9,13 +13,35 @@ services:
       POSTGRES_PASSWORD: astro
       POSTGRES_DB: astro
     ports:
-      - "5432:5432"
+      # Solo esta laptop. 55432 para no chocar con otro Postgres en el 5432.
+      - "127.0.0.1:55432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U astro"]
       interval: 3s
       retries: 20
+
+  mosquitto:
+    # Versión fija: la 2.1 es más estricta con permisos de archivos montados desde Windows.
+    image: eclipse-mosquitto:2.0.20
+    restart: unless-stopped
+    # Genera usuarios y permisos dentro del contenedor y arranca el broker (mosquitto/entrypoint.sh).
+    entrypoint: ["sh", "/mosquitto/config/entrypoint.sh"]
+    environment:
+      MQTT_SERVER_USER: server
+      MQTT_SERVER_PASS: ${MQTT_SERVER_PASS:-clave-server}
+      MQTT_DEVICE_USER: ${MQTT_DEVICE_USER:-node-01}
+      MQTT_DEVICE_PASS: ${MQTT_DEVICE_PASS:-clave-node-01}
+      # Pulsera de prueba para npm run sim -- --mqtt (antes de tener el ESP32)
+      MQTT_TEST_USER: test-01
+      MQTT_TEST_PASS: ${MQTT_TEST_PASS:-clave-test-01}
+    ports:
+      # 0.0.0.0 para que el ESP32 llegue por la red local
+      - "1883:1883"
+    volumes:
+      - ./mosquitto:/mosquitto/config:ro
+      - mosquitto-data:/mosquitto/data
 
   server:
     build:
@@ -25,6 +51,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      mosquitto:
+        condition: service_started
     environment:
       DATABASE_URL: postgresql://astro:astro@db:5432/astro
       DEVICE_API_KEYS: ${DEVICE_API_KEYS:-dev-key}
@@ -32,9 +60,15 @@ services:
       OFFLINE_AFTER_SEC: ${OFFLINE_AFTER_SEC:-10}
       RULE_TIME_SCALE: ${RULE_TIME_SCALE:-1}
       BASELINE_SAMPLES: ${BASELINE_SAMPLES:-30}
+      SIM_ENABLED: ${SIM_ENABLED:-true}
+      MQTT_ENABLED: "true"
+      MQTT_URL: mqtt://mosquitto:1883
+      MQTT_USER: server
+      MQTT_PASS: ${MQTT_SERVER_PASS:-clave-server}
     ports:
-      # 0.0.0.0 para que el ESP32 llegue por la red local
+      # 0.0.0.0 para que el ESP32 (respaldo HTTP) y otras pantallas lleguen por la red local
       - "3000:3000"
 
 volumes:
   pgdata:
+  mosquitto-data:

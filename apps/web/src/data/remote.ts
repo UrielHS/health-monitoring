@@ -25,8 +25,10 @@ const post = (body?: unknown): RequestInit => ({
 /** Fila de GET /api/lecturas (columnas planas de Prisma) → lectura con la forma del contrato. */
 type ReadingRow = {
   deviceId: string; bootId: number; seq: number; ts: string; receivedAt: string; source: string;
-  bpm: number | null; spo2: number | null; ppgQuality: string; accMag: number; gyroMag: number; activity: string; impact: boolean;
-  tempC: number | null; rh: number | null; pressureKpa: number | null; coPpm: number | null; coState: string; localAlert: string;
+  bpm: number | null; spo2: number | null; ppgQuality: string;
+  motionSensor?: string; accMag: number | null; gyroMag: number | null; activity: string | null; impact: boolean;
+  tempC: number | null; rh: number | null; pressureKpa: number | null; coPpm: number | null; coState: string;
+  localAlert: string; localRules?: string[];
 };
 const toReading = (r: ReadingRow): Reading => {
   const ts = new Date(r.ts).getTime();
@@ -34,9 +36,16 @@ const toReading = (r: ReadingRow): Reading => {
     deviceId: r.deviceId, bootId: r.bootId, seq: r.seq, bootMs: 0, ts, receivedAt: new Date(r.receivedAt).getTime(),
     source: r.source as Reading["source"],
     vitals: { bpm: r.bpm, spo2: r.spo2, quality: r.ppgQuality as Reading["vitals"]["quality"] },
-    motion: { accMag: r.accMag, gyroMag: r.gyroMag, activity: r.activity as Reading["motion"]["activity"], impact: r.impact },
+    motion: {
+      sensor: (r.motionSensor ?? "none") as Reading["motion"]["sensor"],
+      accMag: r.accMag,
+      gyroMag: r.gyroMag,
+      activity: r.activity as Reading["motion"]["activity"],
+      impact: r.impact,
+    },
     env: { tempC: r.tempC, rh: r.rh, pressureKpa: r.pressureKpa, coPpm: r.coPpm, coState: r.coState as Reading["env"]["coState"] },
-    localAlert: r.localAlert as Reading["localAlert"],
+    v: 1,
+    localAlert: { level: r.localAlert as Reading["localAlert"]["level"], rules: r.localRules ?? [] },
   };
 };
 

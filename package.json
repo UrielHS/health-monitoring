@@ -12,7 +12,8 @@
     "sim": "npm run sim -w @astro/server --",
     "db:push": "npm run db:push -w @astro/server",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "build:web": "npm run build -w @astro/web"
+    "build:web": "npm run build -w @astro/web",
+    "test": "npm run test -w @astro/shared"
   },
   "engines": {
     "node": ">=20"

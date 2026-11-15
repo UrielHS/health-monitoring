@@ -20,6 +20,15 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((v) => v === "true"),
+  /** Broker Mosquitto. La pulsera publica ahí; el servidor se suscribe. HTTP sigue como respaldo. */
+  MQTT_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  // 127.0.0.1 y no localhost: en Windows "localhost" resuelve primero a IPv6 (::1).
+  MQTT_URL: z.string().default("mqtt://127.0.0.1:1883"),
+  MQTT_USER: z.string().default("server"),
+  MQTT_PASS: z.string().default("clave-server"),
 });
 
 export const env = envSchema.parse(process.env);

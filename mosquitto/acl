@@ -1,0 +1,11 @@
+# Permisos por topic (mínimo privilegio).
+# %u = usuario con el que se conectó. Cada pulsera usa su deviceId como usuario (node-01, test-01),
+# así solo puede publicar en su propio topic y nadie puede hacerse pasar por otra pulsera.
+pattern write astro/v1/%u/telemetry
+pattern write astro/v1/%u/status
+pattern read astro/v1/%u/errors
+pattern read astro/v1/config
+
+# El servidor lee todo y publica errors y config.
+user server
+topic readwrite astro/v1/#
