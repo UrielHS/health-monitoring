@@ -908,6 +908,23 @@ legend,
 a.brand:hover span {
   color: var(--text);
 }
+a.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+/* El logo viene sobre fondo negro: "screen" lo funde con el fondo del encabezado. */
+.brand img {
+  display: block;
+  height: 26px;
+  width: auto;
+  mix-blend-mode: screen;
+}
+.brand span {
+  padding-left: 14px;
+  border-left: 1px solid var(--line-strong);
+  font-size: 14px;
+}
 .brand span {
   font-weight: 400;
   color: var(--muted);
@@ -1883,6 +1900,11 @@ kbd {
   .g-top .tabs,
   .g-top .brand span {
     display: none;
+  }
+  .g-top .btn {
+    white-space: nowrap;
+    font-size: 13px;
+    padding: 0 12px;
   }
   .g-layout {
     grid-template-columns: 1fr;
