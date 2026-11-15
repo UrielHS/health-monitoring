@@ -902,6 +902,11 @@ legend,
 .brand {
   font-size: 16px;
   font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+}
+a.brand:hover span {
+  color: var(--text);
 }
 .brand span {
   font-weight: 400;
@@ -1079,9 +1084,13 @@ legend,
   display: flex;
   flex-direction: column;
 }
+/* Alto del cuerpo 3D en pantallas angostas: casi toda la ventana, sin deformarse en horizontal. */
+.app.mobile {
+  --stage-h: max(320px, min(72vh, 130vw));
+}
 .app.mobile .stage {
   bottom: auto;
-  height: 46vh;
+  height: var(--stage-h);
   top: 56px;
 }
 .app.mobile .leaders {
@@ -1117,7 +1126,7 @@ legend,
 }
 .app.mobile .spacer {
   flex: none;
-  height: 46vh;
+  height: var(--stage-h);
   pointer-events: none;
 }
 .app.mobile .col {
@@ -1158,7 +1167,7 @@ legend,
   right: auto;
   top: auto;
   width: auto;
-  height: 40vh;
+  height: var(--stage-h);
   flex: none;
 }
 

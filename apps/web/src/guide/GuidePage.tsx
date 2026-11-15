@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { SCENARIOS } from "@astro/shared";
-import { APP_NAME, APP_TAGLINE } from "@/config";
+import { APP_NAME } from "@/config";
+import { Brand } from "@/ui/Brand";
 import { useMission } from "@/data/mission";
 import { ZONES } from "@/model/copy";
 import { SCENARIO_INFO } from "@/model/scenarios";
@@ -156,9 +157,7 @@ export function GuidePage() {
   return (
     <div className="guide">
       <header className="g-top">
-        <p className="brand">
-          {APP_NAME} <span>· {APP_TAGLINE}</span>
-        </p>
+        <Brand />
         <nav className="tabs" aria-label="Views">
           <a href="#ship" className="tab">
             Astronaut
